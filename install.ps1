@@ -124,8 +124,9 @@ if (-not (Test-Path $VPy)) {
 & $VPy -m pip install --disable-pip-version-check --quiet --upgrade "flask>=3,<4" "waitress>=3,<4"
 if ($LASTEXITCODE -ne 0) { throw "Kon Flask en waitress niet installeren (heeft de pc internet?)." }
 
-# Welke versie dit is. Uit een git-checkout weten we branch en commit, uit een zip niet.
-$sha = '-'; $branch = '-'
+# Welke versie dit is: uit een git-checkout, of doorgegeven door get.ps1. Uit een zip weten we het niet.
+$sha = if ($env:KIOSK_GIT_SHA) { $env:KIOSK_GIT_SHA } else { '-' }
+$branch = if ($env:KIOSK_GIT_BRANCH) { $env:KIOSK_GIT_BRANCH } else { '-' }
 if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path (Join-Path $Src '.git'))) {
     $sha = "$(& git -C $Src rev-parse HEAD)".Trim()
     $branch = "$(& git -C $Src rev-parse --abbrev-ref HEAD)".Trim()

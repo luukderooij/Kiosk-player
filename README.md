@@ -11,6 +11,42 @@ Je hebt er geen ssh-commando's meer voor nodig.
 
 ---
 
+## Snel installeren
+
+Plak één regel in een terminal op de kiosk. Kiosk Player wordt dan gedownload van GitHub en geïnstalleerd. Het installatiescript stelt daarna dezelfde vragen als bij de gewone installatie hieronder, zoals het wachtwoord voor de webinterface.
+
+**Ubuntu** (in een terminal, als de kioskgebruiker; sudo vraagt om je wachtwoord):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/luukderooij/Kiosk-player/main/get.sh | bash
+```
+
+**Windows, PowerShell** (in een gewoon PowerShell-venster, als de kioskgebruiker):
+
+```powershell
+irm https://raw.githubusercontent.com/luukderooij/Kiosk-player/main/get.ps1 | iex
+```
+
+**Windows, opdrachtprompt (cmd)** of via Windows-toets + R:
+
+```bat
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/luukderooij/Kiosk-player/main/get.ps1 | iex"
+```
+
+Wil je een andere branch of poort, zet dan eerst een omgevingsvariabele:
+
+| | Ubuntu | Windows (PowerShell) |
+|---|---|---|
+| Andere branch | `curl -fsSL …/get.sh \| KIOSK_BRANCH=test bash` | `$env:KIOSK_BRANCH = 'test'` en daarna de regel |
+| Andere poort | `curl -fsSL …/get.sh \| KIOSK_PORT=8090 bash` | `$env:KIOSK_PORT = '8090'` en daarna de regel |
+
+Dezelfde regel werkt ook om bij te werken. Je media, wachtrijen, planning en wachtwoord blijven bewaard.
+
+> Een script van internet direct uitvoeren betekent dat je de inhoud vertrouwt. Wil je het eerst lezen, download het dan, bekijk het, en voer het daarna uit:
+> `curl -fsSLO https://raw.githubusercontent.com/luukderooij/Kiosk-player/main/get.sh && less get.sh && bash get.sh`
+
+---
+
 ## Installeren op Ubuntu
 
 Kopieer de map naar de kiosk en voer het installatiescript uit:

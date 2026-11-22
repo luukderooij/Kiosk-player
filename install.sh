@@ -42,9 +42,11 @@ rm -rf "$APP_DIR/app" "$APP_DIR/app.prev" "$APP_DIR/app.failed" "$APP_DIR/app.sw
 rm -f "$APP_DIR/update-state.json"
 cp -r "$SRC/app" "$SRC/run.py" "$APP_DIR/"
 find "$APP_DIR" -name __pycache__ -prune -exec rm -rf {} +
-# Welke versie dit is. Uit een git-checkout weten we branch en commit, uit een zip niet.
+# Welke versie dit is: uit een git-checkout, of doorgegeven door get.sh. Uit een zip weten we het niet.
 GIT_SHA="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)"
 GIT_BRANCH="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+GIT_SHA="${GIT_SHA:-${KIOSK_GIT_SHA:-}}"
+GIT_BRANCH="${GIT_BRANCH:-${KIOSK_GIT_BRANCH:-}}"
 python3 - "$APP_DIR/VERSION.json" "$GIT_BRANCH" "$GIT_SHA" <<'PY'
 import datetime, json, sys
 path, branch, sha = sys.argv[1:4]

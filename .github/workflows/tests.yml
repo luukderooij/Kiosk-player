@@ -15,7 +15,7 @@ jobs:
       - name: Tests
         run: python3 -m pytest tests/ -v
       - name: Shellscripts controleren
-        run: bash -n install.sh && bash -n uninstall.sh
+        run: bash -n install.sh && bash -n uninstall.sh && bash -n get.sh
 
   windows:
     # Zelfde opzet als install.ps1: Python met Flask en waitress via pip.
@@ -33,7 +33,7 @@ jobs:
         shell: powershell
         run: |
           $failed = $false
-          foreach ($f in 'install.ps1', 'uninstall.ps1') {
+          foreach ($f in 'install.ps1', 'uninstall.ps1', 'get.ps1') {
             $errs = $null
             [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errs)
             $nonAscii = @([IO.File]::ReadAllBytes((Resolve-Path $f)) | Where-Object { $_ -gt 127 }).Count
