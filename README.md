@@ -39,9 +39,21 @@ Wil je een andere poort, start het script dan zo: `sudo KIOSK_PORT=8090 ./instal
 
 > **Let op:** Kiosk Player sluit bij het starten andere VLC-vensters van deze gebruiker. Zo stopt ook de video die je eerder met de hand via ssh startte, en komen er geen twee video's over elkaar. Gebruik je oude ssh-commando daarom niet meer naast Kiosk Player. Wil je dit gedrag niet, zet het dan uit onder **Instellingen**.
 
-### Bijwerken
+### Bijwerken via de website
 
-Pak de nieuwe versie uit en voer `sudo ./install.sh protectiepartners` opnieuw uit. Je media, wachtrijen, planning en wachtwoord blijven bewaard.
+Bijwerken kan via **Instellingen → Software-update**. Je ziet daar welke versie er nu draait en of er op GitHub een nieuwere is.
+
+1. Kies bij **Branch** welke versie je wilt. Meestal is dat *main (standaard)*. Een andere branch kies je om een testversie te proberen.
+2. Kies **Bijwerken**. Bij een andere branch heet de knop **Deze versie testen**. Kiosk Player downloadt de versie, controleert hem, installeert hem en herstart. Het scherm is dan ongeveer 10 seconden zwart, waarna de pagina vanzelf opnieuw laadt.
+3. Wil je terug, kies dan **Vorige versie terugzetten**.
+
+Start een nieuwe versie niet goed op, dan zet Kiosk Player na drie pogingen vanzelf de vorige versie terug. Dat zie je daarna als melding in het paneel. Je media, wachtrijen, planning en wachtwoord blijven bij elke update bewaard.
+
+> Werkt de knop niet en staat er dat de programmamap niet schrijfbaar is? Dan is Kiosk Player geïnstalleerd met een oudere versie van het script. Voer eenmalig `sudo ./install.sh protectiepartners` uit met deze versie, daarna werkt bijwerken via de website.
+
+### Bijwerken met het installatiescript
+
+Pak de nieuwe versie uit en voer `sudo ./install.sh protectiepartners` opnieuw uit. Je media, wachtrijen, planning en wachtwoord blijven bewaard. Dit is nodig als een nieuwe versie andere Ubuntu-pakketten nodig heeft of als `run.py`, het installatiescript of de systemd-dienst is veranderd. De website werkt alleen de map `app/` bij.
 
 ---
 
@@ -91,7 +103,7 @@ Alle gegevens staan in `~/kiosk-player`:
 ~/kiosk-player/
   media/          je video's en afbeeldingen
   data.json       wachtrijen, planning en instellingen
-  config.json     poort en wachtwoord-hash
+  config.json     poort, wachtwoord-hash en de GitHub-repository voor updates
   logs/           kiosk-player.log en vlc.log (laatste VLC-uitvoer)
 ```
 
@@ -128,6 +140,7 @@ Sommige formaten, zoals mkv, spelen niet in elke browser. VLC op de kiosk speelt
 - Onder **Instellingen** kun je als VLC-commando alleen `vlc` of `cvlc` invullen, en als extra opties alleen VLC-opties die met `--` beginnen. Opties die andere programma's laden of bestanden wegschrijven worden geweigerd.
 - VLC wordt alleen op de kiosk zelf bediend, via een interne poort met een wachtwoord dat elke keer anders is.
 - Kiosk Player weigert als root te draaien. Hij draait altijd als de kioskgebruiker.
+- Updates via de website komen alleen uit de ingestelde GitHub-repository (`update_repo` in `config.json`). Iedereen met het wachtwoord van de webinterface kan dus elke branch uit die repository installeren. Geef alleen mensen schrijfrechten op de repository die je dat toevertrouwt.
 
 ---
 

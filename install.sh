@@ -38,10 +38,24 @@ fi
 
 echo "==> Programma kopiëren naar $APP_DIR"
 mkdir -p "$APP_DIR"
-rm -rf "$APP_DIR/app"
+rm -rf "$APP_DIR/app" "$APP_DIR/app.prev" "$APP_DIR/app.failed" "$APP_DIR/app.swap" "$APP_DIR/.staging"
+rm -f "$APP_DIR/update-state.json"
 cp -r "$SRC/app" "$SRC/run.py" "$APP_DIR/"
 find "$APP_DIR" -name __pycache__ -prune -exec rm -rf {} +
-chmod -R a+rX "$APP_DIR"
+# Welke versie dit is. Uit een git-checkout weten we branch en commit, uit een zip niet.
+GIT_SHA="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)"
+GIT_BRANCH="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+python3 - "$APP_DIR/VERSION.json" "$GIT_BRANCH" "$GIT_SHA" <<'PY'
+import datetime, json, sys
+path, branch, sha = sys.argv[1:4]
+with open(path, "w") as f:
+    json.dump({"source": "install.sh", "branch": branch or None, "sha": sha or None,
+               "installed_at": datetime.datetime.now().isoformat(timespec="seconds"),
+               "previous": None}, f, indent=2)
+PY
+# De kioskgebruiker is eigenaar, zodat de update via de website app/ kan vervangen.
+chown -R "$KIOSK_USER:$KIOSK_GROUP" "$APP_DIR"
+chmod -R u+rwX,go+rX "$APP_DIR"
 
 echo "==> Gegevensmap $DATA_DIR"
 as_user mkdir -p "$DATA_DIR/media"

@@ -28,6 +28,8 @@ DEFAULT_CONFIG = {
     "max_upload_gb": 20,
     "password_hash": None,
     "secret_key": None,
+    "update_repo": "luukderooij/Kiosk-player",  # GitHub-repository voor updates via de website
+    "github_token": None,                         # alleen nodig als de repository privé is
 }
 
 

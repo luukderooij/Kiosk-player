@@ -410,6 +410,10 @@ button.seg:hover { filter: brightness(1.08); }
 dl.about { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 0; }
 dl.about dt { color: var(--muted); }
 dl.about dd { margin: 0; overflow-wrap: anywhere; }
+.upd > * + * { margin-top: 16px; }
+.upd .banner { margin-top: 16px; }
+.upd select { width: 100%; }
+.upd code, .banner code { font-family: ui-monospace, "Cascadia Mono", "Ubuntu Mono", Consolas, monospace; font-size: .92em; }
 
 /* --- dialoog ----------------------------------------------------------------------- */
 dialog {

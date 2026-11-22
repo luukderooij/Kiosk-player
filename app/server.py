@@ -11,6 +11,7 @@ import re
 import secrets
 import shlex
 import sys
+import threading
 import time
 import urllib.parse
 from datetime import date, datetime, timedelta
@@ -23,6 +24,7 @@ from .media import ALLOWED_EXT, MediaLibrary, kind_of
 from .player import Player
 from .schedule import parse_hm, timeline
 from .store import Config, Store, new_id
+from .updater import Updater, UpdateError
 
 VERSION = "1.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -232,6 +234,21 @@ def create_app(data_dir: str) -> Flask:
     player = Player(os.path.join(data_dir, "logs", "vlc.log"))
     controller = Controller(store, media, player, data_dir)
 
+    def restart_process():
+        """Stop VLC en beëindig het proces; systemd (Restart=always) start ons opnieuw."""
+        def go():
+            time.sleep(1.5)  # het antwoord en de laatste status nog laten ophalen
+            try:
+                with controller.tick_lock:
+                    player.stop()
+            finally:
+                logging.shutdown()
+                os._exit(0)
+        threading.Thread(target=go, name="restart", daemon=True).start()
+
+    updater = Updater(os.path.dirname(HERE), config["update_repo"], config["github_token"],
+                      restart=restart_process, event=controller.event)
+
     app = Flask(__name__, static_folder=None)
     app.secret_key = config["secret_key"]
     app.config.update(
@@ -241,7 +258,8 @@ def create_app(data_dir: str) -> Flask:
         MAX_CONTENT_LENGTH=int(config["max_upload_gb"] * 1024 ** 3),
     )
     app.extensions["kiosk"] = {"config": config, "store": store, "media": media,
-                               "player": player, "controller": controller, "data_dir": data_dir}
+                               "player": player, "controller": controller, "data_dir": data_dir,
+                               "updater": updater}
     failed_logins: dict = {}
 
     # --- beveiliging -------------------------------------------------------
@@ -270,6 +288,10 @@ def create_app(data_dir: str) -> Flask:
     @app.errorhandler(ApiError)
     def api_error(err: ApiError):
         return jsonify(error=str(err), **err.extra), err.status
+
+    @app.errorhandler(UpdateError)
+    def update_error(err: UpdateError):
+        return jsonify(error=str(err)), err.status
 
     @app.errorhandler(413)
     def too_large(_err):
@@ -605,7 +627,32 @@ def create_app(data_dir: str) -> Flask:
             raise ApiError("Onbekende actie", 404)
         return jsonify(ok=True)
 
-    controller.event("info", f"Kiosk Player {VERSION} gestart")
+    # --- software-update ---------------------------------------------------------
+    @app.get("/api/update")
+    def api_update_status():
+        return jsonify(updater.status())
+
+    @app.get("/api/update/branches")
+    def api_update_branches():
+        return jsonify(updater.branches())
+
+    @app.get("/api/update/commit")
+    def api_update_commit():
+        return jsonify(updater.commit(request.args.get("branch", "")))
+
+    @app.post("/api/update")
+    def api_update_start():
+        updater.start(body().get("branch"))
+        return jsonify(ok=True), 202
+
+    @app.post("/api/update/rollback")
+    def api_update_rollback():
+        updater.rollback()
+        return jsonify(ok=True), 202
+
+    installed = updater.installed()
+    label = f" ({installed.get('branch')} {str(installed.get('sha'))[:7]})" if installed.get("sha") else ""
+    controller.event("info", f"Kiosk Player {VERSION}{label} gestart")
     controller.start()
     return app
 

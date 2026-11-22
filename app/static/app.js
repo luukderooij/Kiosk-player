@@ -15,6 +15,7 @@ const S = {
   queueSel: null, draft: null, dirty: false,
   week: null, timeline: null,
   uploads: [], uploading: false, mediaFilter: "all", mediaSearch: "",
+  upd: null, updBranches: null, updCommit: null, updSel: null, updErr: null, updWatch: false,
 };
 
 async function api(method, url, body) {
@@ -1034,6 +1035,10 @@ function renderSettings() {
         </form>
       </section>
       <section class="panel">
+        <h2>Software-update</h2>
+        <div id="upd" class="upd"><p class="muted">Laden…</p></div>
+      </section>
+      <section class="panel">
         <h2>Over deze kiosk</h2>
         <dl class="about">
           <dt>Versie</dt><dd>Kiosk Player ${esc(info.version)}</dd>
@@ -1066,6 +1071,143 @@ function renderSettings() {
       toast("Wachtwoord gewijzigd");
     } catch (err) { fail(err); }
   });
+  loadUpdate();
+}
+
+// ------------------------------------------------------------ software-update
+const short = (sha) => (sha ? String(sha).slice(0, 7) : "–");
+function fmtStamp(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString("nl-NL", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+const versionLabel = (v) => (v && (v.sha || v.branch) ? `<b>${esc(v.branch || "?")}</b> · <code>${esc(short(v.sha))}</code>` : "Onbekend");
+const updBusy = () => ["busy", "restarting"].includes(S.upd?.job?.status);
+
+async function loadUpdate() {
+  if (!$("#upd")) return;
+  try {
+    S.upd = await api("GET", "/api/update");
+  } catch (e) { $("#upd").innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+  renderUpdate();
+  if (updBusy()) { watchUpdate(); return; }
+  if (S.upd.problem || S.updBranches) { if (S.updBranches) loadCommit(); return; }
+  try {
+    S.updBranches = await api("GET", "/api/update/branches");
+    S.updErr = null;
+    const names = S.updBranches.branches.map((b) => b.name);
+    const inst = S.upd.installed.branch;
+    if (!names.includes(S.updSel)) S.updSel = names.includes(inst) ? inst : S.updBranches.default || names[0];
+  } catch (e) { S.updErr = e.message; }
+  renderUpdate();
+  loadCommit();
+}
+
+async function loadCommit() {
+  const sel = S.updSel;
+  if (!sel) return;
+  S.updCommit = null;
+  renderUpdate();
+  let c;
+  try { c = await api("GET", `/api/update/commit?branch=${enc(sel)}`); } catch (e) { c = { error: e.message }; }
+  if (sel !== S.updSel) return;
+  S.updCommit = c;
+  renderUpdate();
+}
+
+function renderUpdate() {
+  const el = $("#upd");
+  if (!el || !S.upd) return;
+  const u = S.upd, v = u.installed || {}, job = u.job || {}, last = u.last || {}, busy = updBusy();
+  const banner = (kind, html) => `<div class="banner ${kind}"><p>${html}</p></div>`;
+  const h = [`<dl class="about">
+    <dt>Geïnstalleerd</dt><dd>${versionLabel(v)}${v.source === "install.sh" ? ' <span class="muted small">via install.sh</span>' : ""}</dd>
+    ${v.message ? `<dt>Wijziging</dt><dd>${esc(v.message)}</dd>` : ""}
+    ${v.installed_at ? `<dt>Sinds</dt><dd>${esc(fmtStamp(v.installed_at))}</dd>` : ""}
+    <dt>Repository</dt><dd>${esc(u.repo)}</dd></dl>`];
+  if (last.status === "rolled_back") h.push(banner("error", `De update naar <b>${esc(last.failed_branch)}</b> (${esc(short(last.failed_sha))}) startte niet. De vorige versie is automatisch teruggezet.`));
+  if (last.status === "failed_no_backup") h.push(banner("error", "De nieuwe versie start niet goed en er was geen vorige versie om terug te zetten. Bekijk op de kiosk <code>journalctl -u kiosk-player</code>."));
+  if (job.status === "error") h.push(banner("error", `<b>Update mislukt.</b> ${esc(job.error)}`));
+  if (busy) h.push(banner("", `<b>${esc(job.step || "Bezig")}…</b><br><span class="small">Na het installeren herstart Kiosk Player. Het scherm is dan ongeveer 10 seconden zwart.</span>`));
+  if (u.problem) {
+    h.push(banner("warn", esc(u.problem)));
+    el.innerHTML = h.join("");
+    return;
+  }
+  const prev = v.previous ? ` (${esc(v.previous.branch || "?")} ${esc(short(v.previous.sha))})` : "";
+  const back = u.rollback_available ? `<button class="btn ghost" type="button" data-act="upd-back" ${busy ? "disabled" : ""}>Vorige versie terugzetten${prev}</button>` : "";
+  if (S.updErr) h.push(`<p class="muted small">${esc(S.updErr)}</p>`);
+  if (S.updBranches) {
+    const br = S.updBranches;
+    const opts = br.branches.map((b) => `<option value="${esc(b.name)}" ${b.name === S.updSel ? "selected" : ""}>${esc(b.name)}${b.name === br.default ? " (standaard)" : ""}${b.name === v.branch ? " (geïnstalleerd)" : ""}</option>`).join("");
+    h.push(`<label class="field"><span>Branch</span><select id="updBranch" ${busy ? "disabled" : ""}>${opts}</select>
+      <p class="hint">Kies een andere branch om een testversie te proberen. Met <b>Vorige versie terugzetten</b> ga je daarna terug.</p></label>`);
+    const c = S.updCommit;
+    if (!c) h.push(`<p class="muted small">Laatste versie ophalen…</p>`);
+    else if (c.error) h.push(`<p class="muted small">${esc(c.error)}</p>`);
+    else {
+      const cmp = c.compare;
+      let rel = "";
+      if (c.same) rel = "Dit is de versie die nu draait.";
+      else if (cmp?.status === "ahead") rel = `${plural(cmp.ahead_by, "nieuwe wijziging", "nieuwe wijzigingen")} ten opzichte van wat nu draait.`;
+      else if (cmp?.status === "behind") rel = `Ouder dan wat nu draait: ${plural(cmp.behind_by, "wijziging", "wijzigingen")} terug.`;
+      else if (cmp?.status === "diverged") rel = `Een andere tak: ${cmp.ahead_by} nieuw, ${cmp.behind_by} van wat nu draait zit er niet in.`;
+      h.push(`<p class="small">Laatste versie: <code>${esc(short(c.sha))}</code> ${esc(c.message)}<br><span class="muted">${esc(c.author || "")}${c.date ? ` · ${esc(fmtStamp(c.date))}` : ""}</span>${rel ? `<br>${rel}` : ""}</p>`);
+    }
+    const ready = c && !c.error;
+    const label = ready && c.same ? "Opnieuw installeren" : S.updSel === br.default ? "Bijwerken" : "Deze versie testen";
+    h.push(`<div class="row"><button class="btn ${ready && c.same ? "" : "primary"}" type="button" data-act="upd-go" ${busy || !ready ? "disabled" : ""}>${label}</button>${back}
+      <button class="btn ghost small" type="button" data-act="upd-refresh" ${busy ? "disabled" : ""}>Vernieuwen</button></div>`);
+  } else if (back) h.push(`<div class="row">${back}</div>`);
+  el.innerHTML = h.join("");
+  $("#updBranch")?.addEventListener("change", (e) => { S.updSel = e.target.value; loadCommit(); });
+}
+
+async function startUpdate() {
+  const sel = S.updSel, c = S.updCommit, isDefault = sel === S.updBranches?.default;
+  const ok = await confirmBox({
+    title: isDefault ? "Kiosk Player bijwerken?" : "Testversie installeren?",
+    text: `Kiosk Player installeert <b>${esc(sel)}</b> (${esc(short(c?.sha))}) en herstart daarna. Het scherm is ongeveer 10 seconden zwart.${isDefault ? "" : "<br><br>Dit is niet de standaardbranch. Met <b>Vorige versie terugzetten</b> ga je terug."}`,
+    ok: isDefault ? "Bijwerken" : "Installeren", danger: false,
+  });
+  if (!ok) return;
+  try { await api("POST", "/api/update", { branch: sel }); } catch (e) { fail(e); return; }
+  watchUpdate();
+}
+
+async function rollbackUpdate() {
+  const p = S.upd?.installed?.previous;
+  const ok = await confirmBox({
+    title: "Vorige versie terugzetten?",
+    text: `Kiosk Player gaat terug naar ${p ? `<b>${esc(p.branch || "?")}</b> (${esc(short(p.sha))})` : "de vorige versie"} en herstart daarna. Het scherm is ongeveer 10 seconden zwart.`,
+    ok: "Terugzetten", danger: false,
+  });
+  if (!ok) return;
+  try { await api("POST", "/api/update/rollback"); } catch (e) { fail(e); return; }
+  watchUpdate();
+}
+
+async function watchUpdate() {
+  if (S.updWatch) return;
+  S.updWatch = true;
+  const before = S.upd?.installed?.installed_at, t0 = Date.now();
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  try {
+    while (Date.now() - t0 < 180000) {
+      await wait(1500);
+      let u;
+      try { u = await api("GET", "/api/update"); } catch { continue; } // herstart: even onbereikbaar
+      if (u.installed?.installed_at !== before && !["busy", "restarting"].includes(u.job.status)) {
+        toast("Kiosk Player is opnieuw gestart");
+        setTimeout(() => location.reload(), 800);
+        return;
+      }
+      S.upd = u;
+      if (S.view === "instellingen") renderUpdate();
+      if (!["busy", "restarting"].includes(u.job.status)) return;
+    }
+    toast("De update duurt erg lang. Kijk op de kiosk met: journalctl -u kiosk-player", "error");
+  } finally { S.updWatch = false; }
 }
 
 // =============================================================== acties
@@ -1135,6 +1277,12 @@ view.addEventListener("click", async (e) => {
     case "new-rule": return ruleDialog(null);
     case "edit-rule": return ruleDialog(S.all.rules.find((r) => r.id === id));
     case "del-rule": return deleteRule(id);
+    // software-update
+    case "upd-go": return startUpdate();
+    case "upd-back": return rollbackUpdate();
+    case "upd-refresh":
+      S.updBranches = null; S.updCommit = null;
+      return loadUpdate();
   }
 });
 

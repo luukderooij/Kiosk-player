@@ -77,6 +77,16 @@ def test_extra_args_blocked(extra):
         validate_extra_args(extra)
 
 
+def test_update_status_and_refusal_in_dev_checkout(app):
+    c = app.test_client()
+    login(c)
+    st = c.get("/api/update").get_json()
+    assert st["job"]["status"] == "idle" and st["problem"]  # git-checkout of geen systemd
+    r = c.post("/api/update", headers=H, json={"branch": "main"})
+    assert r.status_code in (400, 409) and r.get_json()["error"]
+    assert c.post("/api/update", json={"branch": "main"}).status_code == 403
+
+
 def test_settings_endpoint_rejects_bad_vlc_command(app):
     c = app.test_client()
     login(c)
