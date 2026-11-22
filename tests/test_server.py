@@ -123,6 +123,34 @@ def test_set_password_from_pipe_handles_bom_and_crlf(tmp_path, raw):
     assert check_password_hash(h, "wachtwoord-é-test")
 
 
+@pytest.mark.parametrize("with_waitress", [True, False])
+def test_main_starts_the_web_server(tmp_path, monkeypatch, with_waitress):
+    """main() moet tot aan het starten van de webserver komen, met en zonder waitress."""
+    import types
+
+    from app import server
+    calls = {}
+    if with_waitress:
+        fake = types.ModuleType("waitress")
+        fake.serve = lambda app, **kw: calls.update(kind="waitress", **kw)
+        monkeypatch.setitem(sys.modules, "waitress", fake)
+    else:
+        monkeypatch.setitem(sys.modules, "waitress", None)  # import faalt
+        monkeypatch.setattr(server.Flask, "run", lambda self, **kw: calls.update(kind="flask", **kw))
+    cfg = Config(str(tmp_path))
+    cfg["password_hash"] = generate_password_hash(PW)
+    cfg["host"], cfg["port"] = "127.0.0.1", 0
+    cfg.save()
+    monkeypatch.setenv("KIOSK_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("KIOSK_SUPERVISED", raising=False)
+    monkeypatch.setattr(sys, "argv", ["run.py"])
+    monkeypatch.setattr(server, "setup_logging", lambda data_dir: None)
+    server.main()
+    assert calls["kind"] == ("waitress" if with_waitress else "flask")
+    if with_waitress:
+        assert calls["max_request_body_size"] > 1024 ** 3
+
+
 def test_update_status_and_refusal_in_dev_checkout(app):
     c = app.test_client()
     login(c)

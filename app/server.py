@@ -736,8 +736,8 @@ def main() -> None:
         sys.exit("Start Kiosk Player niet als root: VLC weigert als root te draaien. "
                  "Gebruik de kioskgebruiker (zie README).")
     os.makedirs(data_dir, exist_ok=True)
-    pre = Config(data_dir)
-    host, port = pre["host"], int(pre["port"])
+    config = Config(data_dir)
+    host, port = config["host"], int(config["port"])
     # Vóór de planner start: een tweede exemplaar zou anders VLC van het eerste sluiten.
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
