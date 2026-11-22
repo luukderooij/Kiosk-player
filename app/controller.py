@@ -44,6 +44,9 @@ class Controller:
         self.player = player
         self.events: deque = deque(maxlen=200)
         self.wake = threading.Event()
+        # Lock-volgorde: altijd eerst tick_lock, dan store.lock. VLC starten/stoppen
+        # gebeurt alleen onder tick_lock, zodat de API niet wacht op VLC.
+        self.tick_lock = threading.RLock()
         self.failures = 0
         self.retry_at = 0.0
         self.failed_sig = None
@@ -107,14 +110,15 @@ class Controller:
         if fk and not fk.startswith(slot.key):
             rt["finished_key"] = fk = None
             store.save()
-        if fk and fk == key:
+        if fk and fk == f"{key}|default":
+            # zowel de geplande wachtrij als de standaardwachtrij zijn afgelopen
+            key, source, qid = fk, "default", None
+        elif fk and fk == key:
             dq = store.settings.get("default_queue")
             if slot.rule_id and dq and store.queue(dq):
                 key, source, qid = f"{key}|default", "default", dq
             else:
                 qid = None
-        if fk and fk == key:
-            qid = None
         return key, source, qid, slot
 
     def build_spec(self, key: str, source: str, queue_id) -> PlaySpec | None:
@@ -142,11 +146,11 @@ class Controller:
         return None
 
     def tick(self) -> None:
-        with self.store.lock:
-            self._handle_exit()
-            now = datetime.now()
-            key, source, qid, _slot = self.desired(now)
-            spec = self.build_spec(key, source, qid)
+        with self.tick_lock:
+            with self.store.lock:
+                self._handle_exit()
+                key, source, qid, _slot = self.desired(datetime.now())
+                spec = self.build_spec(key, source, qid)
             p = self.player
 
             if spec is None:
@@ -213,38 +217,41 @@ class Controller:
         self.failures, self.retry_at, self.failed_sig, self.last_error = 0, 0.0, None, None
 
     def manual(self, queue_id) -> None:
-        with self.store.lock:
-            slot = self.current_slot(datetime.now())
-            self.store.runtime["override"] = {
-                "id": new_id(), "queue_id": queue_id, "sched_key": slot.key,
-                "set_at": datetime.now().isoformat(timespec="seconds"), "finished": False}
-            self.store.save()
-            q = self.store.queue(queue_id) if queue_id else None
-            self.event("info", f"Handmatig: {q['name'] if q else 'stoppen'}")
+        with self.tick_lock:
+            with self.store.lock:
+                slot = self.current_slot(datetime.now())
+                self.store.runtime["override"] = {
+                    "id": new_id(), "queue_id": queue_id, "sched_key": slot.key,
+                    "set_at": datetime.now().isoformat(timespec="seconds"), "finished": False}
+                self.store.save()
+                q = self.store.queue(queue_id) if queue_id else None
+                self.event("info", f"Handmatig: {q['name'] if q else 'stoppen'}")
             self._reset_retry()
-        self.tick()
+            self.tick()
 
     def resume_schedule(self) -> None:
-        with self.store.lock:
-            self.store.runtime["override"] = None
-            self.store.runtime["finished_key"] = None
-            self.store.save()
-            self.event("info", "Terug naar planning")
+        with self.tick_lock:
+            with self.store.lock:
+                self.store.runtime["override"] = None
+                self.store.runtime["finished_key"] = None
+                self.store.save()
+                self.event("info", "Terug naar planning")
             self._reset_retry()
-        self.tick()
+            self.tick()
 
     def restart(self) -> None:
-        with self.store.lock:
+        with self.tick_lock:
             self.player.stop()
             self._reset_retry()
-            self.store.runtime["finished_key"] = None
-            self.store.save()
+            with self.store.lock:
+                self.store.runtime["finished_key"] = None
+                self.store.save()
             self.event("info", "VLC herstart")
-        self.tick()
+            self.tick()
 
     def scheduler_toggled(self, enabled: bool) -> None:
         """Planner uit: huidige weergave vasthouden als handmatige keuze."""
-        with self.store.lock:
+        with self.tick_lock, self.store.lock:
             rt = self.store.runtime
             if not enabled:
                 current = self.player.spec.queue_id if self.player.running and self.player.spec else None
@@ -264,7 +271,10 @@ class Controller:
         with self.store.lock:
             key, source, qid, slot = self.desired(now)
             p, store = self.player, self.store
-            spec = p.spec if p.running else None
+            # één keer uitlezen: VLC kan tegelijk starten/stoppen onder tick_lock
+            proc, started_at, command = p.proc, p.started_at, p.display_command()
+            running = proc is not None and proc.poll() is None
+            spec = p.spec if running else None
             rule = store.rule(slot.rule_id) if slot.rule_id else None
             ids = store.queue_ids()
             s = store.settings
@@ -275,15 +285,15 @@ class Controller:
             out = {
                 "now": now.astimezone().isoformat(timespec="seconds"),
                 "tz": now.astimezone().tzname(),
-                "running": p.running,
-                "pid": p.proc.pid if p.running else None,
-                "started_at": datetime.fromtimestamp(p.started_at).isoformat(timespec="seconds")
-                if p.running and p.started_at else None,
+                "running": running,
+                "pid": proc.pid if running else None,
+                "started_at": datetime.fromtimestamp(started_at).isoformat(timespec="seconds")
+                if running and started_at else None,
                 "queue_id": spec.queue_id if spec else None,
                 "queue_name": spec.queue_name if spec else None,
                 "source": spec.source if spec else None,
                 "loop": spec.loop if spec else None,
-                "command": p.display_command() if p.running else "",
+                "command": command if running else "",
                 "desired": {"queue_id": qid, "source": source},
                 "slot": {"rule_id": slot.rule_id, "rule_name": rule["name"] if rule else None,
                          "start": slot.start.isoformat() if slot.start else None,
@@ -292,9 +302,9 @@ class Controller:
                 "scheduler_enabled": s.get("scheduler_enabled", True),
                 "error": self.last_error,
                 "retry_in": max(0, round(self.retry_at - time.time()))
-                if (wanted and not p.running and self.last_error) else None,
+                if (wanted and not running and self.last_error) else None,
                 "next_changes": [{"at": c["start"].isoformat(), "queue_id": c["queue_id"],
                                   "rule_id": c["rule_id"]} for c in changes],
             }
-        out["vlc"] = p.status() if p.running else None
+        out["vlc"] = p.status() if running else None
         return out

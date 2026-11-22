@@ -1007,7 +1007,7 @@ function renderSettings() {
       <h2>Weergave</h2>
       <form id="fVlc">
         <label class="field"><span>VLC-commando</span><input type="text" name="vlc_command" value="${esc(s.vlc_command)}" required>
-          <p class="hint">Meestal <b>cvlc</b>. Opties als volledig scherm en herhalen voegt Kiosk Player zelf toe.</p></label>
+          <p class="hint">Meestal <b>cvlc</b>. Alleen vlc of cvlc is toegestaan. Opties als volledig scherm en herhalen voegt Kiosk Player zelf toe.</p></label>
         <div class="grid2">
           <label class="field"><span>Display</span><input type="text" name="display" value="${esc(s.display)}" required><p class="hint">Net als DISPLAY=:0 in je ssh-commando.</p></label>
           <label class="field"><span>Afbeeldingen standaard in beeld</span><div class="row" style="flex-wrap:nowrap"><input type="number" name="default_image_duration" min="1" max="86400" value="${s.default_image_duration}" class="narrow"><span class="muted">seconden</span></div>
@@ -1015,7 +1015,7 @@ function renderSettings() {
         </div>
         <label class="check"><input type="checkbox" name="kill_other_vlc" ${s.kill_other_vlc ? "checked" : ""}><span><b>Andere VLC-vensters sluiten</b><small>Bijvoorbeeld een VLC die je eerder met de hand via ssh startte</small></span></label>
         <label class="field"><span>Extra VLC-opties</span><input type="text" name="extra_args" value="${esc(s.extra_args)}" placeholder="Bijvoorbeeld: --no-audio --aspect-ratio=16:9">
-          <p class="hint">Worden aan elk VLC-commando toegevoegd. Laat leeg als je het niet zeker weet.</p></label>
+          <p class="hint">Worden aan elk VLC-commando toegevoegd. Alleen opties die met -- beginnen. Laat leeg als je het niet zeker weet.</p></label>
         <label class="field"><span>Interne poort voor VLC-bediening</span><input type="number" name="vlc_http_port" min="1024" max="65535" value="${s.vlc_http_port}" class="narrow" style="width:120px">
           <p class="hint">Alleen bereikbaar op de kiosk zelf.</p></label>
         <div class="row"><button class="btn primary" type="submit">Opslaan</button><span class="muted small">VLC start daarna opnieuw.</span></div>

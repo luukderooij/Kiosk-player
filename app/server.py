@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import getpass
+import hashlib
+import hmac
 import logging
 import logging.handlers
 import os
@@ -121,6 +123,47 @@ def validate_rule(payload: dict, store: Store, existing: dict | None = None) -> 
     return r
 
 
+VLC_PROGRAMS = {"vlc", "cvlc"}
+VLC_PROGRAM_DIRS = {"/usr/bin", "/usr/local/bin", "/snap/bin", "/bin"}
+# Opties waarmee VLC andere code laadt, de interne bediening overneemt of bestanden wegschrijft.
+BLOCKED_VLC_OPTIONS = ("--intf", "--extraintf", "--control", "--lua", "--http", "--plugin",
+                       "--data-path", "--sout", "--snapshot-path", "--record-path",
+                       "--input-record-path", "--config", "--logfile", "--file-logging")
+
+
+def _vlc_options(tokens: list, field: str) -> None:
+    for tok in tokens:
+        if not tok.startswith("--"):
+            raise ApiError(f"{field}: alleen opties die met -- beginnen zijn toegestaan ('{tok}')")
+        name = tok.split("=", 1)[0].lower()
+        if name.startswith("--no-"):
+            name = "--" + name[5:]
+        if any(name == b or name.startswith(b + "-") for b in BLOCKED_VLC_OPTIONS):
+            raise ApiError(f"{field}: de optie '{name}' is niet toegestaan")
+
+
+def validate_vlc_command(cmd: str) -> None:
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        raise ApiError("VLC-commando kan niet gelezen worden (controleer aanhalingstekens)")
+    if not tokens:
+        raise ApiError("Veld 'VLC-commando' is ongeldig")
+    prog = tokens[0]
+    folder, base = os.path.split(prog)
+    if base not in VLC_PROGRAMS or (folder and folder not in VLC_PROGRAM_DIRS):
+        raise ApiError("VLC-commando moet vlc of cvlc zijn, eventueel met een pad als /usr/bin/cvlc")
+    _vlc_options(tokens[1:], "VLC-commando")
+
+
+def validate_extra_args(extra: str) -> None:
+    try:
+        tokens = shlex.split(extra)
+    except ValueError:
+        raise ApiError("Extra VLC-opties kunnen niet gelezen worden (controleer aanhalingstekens)")
+    _vlc_options(tokens, "Extra VLC-opties")
+
+
 def validate_settings(payload: dict, store: Store) -> dict:
     out = {}
     if "default_queue" in payload:
@@ -133,10 +176,7 @@ def validate_settings(payload: dict, store: Store) -> dict:
             out[key] = bool(payload[key])
     if "vlc_command" in payload:
         cmd = _str(payload["vlc_command"], "VLC-commando", max_len=300)
-        try:
-            shlex.split(cmd)
-        except ValueError:
-            raise ApiError("VLC-commando kan niet gelezen worden (controleer aanhalingstekens)")
+        validate_vlc_command(cmd)
         out["vlc_command"] = cmd
     if "display" in payload:
         disp = _str(payload["display"], "display", max_len=40)
@@ -145,11 +185,10 @@ def validate_settings(payload: dict, store: Store) -> dict:
         out["display"] = disp
     if "extra_args" in payload:
         extra = str(payload["extra_args"] or "").strip()
-        try:
-            shlex.split(extra)
-        except ValueError:
-            raise ApiError("Extra VLC-opties kunnen niet gelezen worden (controleer aanhalingstekens)")
-        out["extra_args"] = extra[:500]
+        if len(extra) > 500:
+            raise ApiError("Extra VLC-opties zijn te lang (maximaal 500 tekens)")
+        validate_extra_args(extra)
+        out["extra_args"] = extra
     if "default_image_duration" in payload:
         try:
             v = int(payload["default_image_duration"])
@@ -206,12 +245,20 @@ def create_app(data_dir: str) -> Flask:
     failed_logins: dict = {}
 
     # --- beveiliging -------------------------------------------------------
+    def pw_tag() -> str:
+        """Verandert mee met het wachtwoord, zodat oude sessies dan ongeldig worden."""
+        return hashlib.sha256((config["password_hash"] or "").encode()).hexdigest()[:16]
+
+    def logged_in() -> bool:
+        return bool(session.get("auth")) and hmac.compare_digest(str(session.get("pw", "")), pw_tag())
+
     @app.before_request
     def guard():
         path = request.path
         if path in ("/login", "/api/login") or path.startswith("/static/"):
             return None
-        if not session.get("auth"):
+        if not logged_in():
+            session.clear()
             if path.startswith("/api/"):
                 return jsonify(error="Niet ingelogd"), 401
             return redirect("/login")
@@ -244,7 +291,7 @@ def create_app(data_dir: str) -> Flask:
 
     @app.get("/login")
     def login_page():
-        if session.get("auth"):
+        if logged_in():
             return redirect("/")
         return page("login.html")
 
@@ -265,6 +312,7 @@ def create_app(data_dir: str) -> Flask:
             failed_logins.pop(ip, None)
             session.clear()
             session["auth"] = True
+            session["pw"] = pw_tag()
             session.permanent = True
             return jsonify(ok=True)
         fails += 1
@@ -287,6 +335,7 @@ def create_app(data_dir: str) -> Flask:
             raise ApiError("Kies een wachtwoord van minstens 8 tekens")
         config["password_hash"] = generate_password_hash(new)
         config.save()
+        session["pw"] = pw_tag()  # deze sessie blijft ingelogd, alle andere niet
         pw_file = os.path.join(data_dir, "EERSTE-WACHTWOORD.txt")
         if os.path.exists(pw_file):
             os.unlink(pw_file)

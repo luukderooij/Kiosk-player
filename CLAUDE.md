@@ -18,7 +18,8 @@ KIOSK_DATA_DIR=./tmp-data python3 run.py set-password      # wachtwoord instelle
 - Er is geen `requirements.txt` of `pyproject.toml`. Bewust: op de kiosk komen de dependencies uit apt (`python3-flask`, `python3-waitress`, `vlc`, `ffmpeg`), dus geen pip of venv. Gebruik geen andere pakketten dan wat Ubuntu 24.04 meelevert, en de standaardbibliotheek.
 - Waitress is optioneel. Ontbreekt het, dan valt `main()` terug op de ingebouwde server van Flask.
 - Er is geen linter of formatter geconfigureerd. Er is ook geen build-stap voor de frontend.
-- De ontwikkelmachine is Windows, maar de app is alleen voor Linux bedoeld. `os.geteuid`, `os.killpg`, `pkill` en `/run/user/<uid>` bestaan niet op Windows. De app zelf start daarom niet op Windows. Alleen de tests (pure schema-logica) draaien daar wel.
+- CI ([.github/workflows/tests.yml](.github/workflows/tests.yml)) draait de tests bij elke push op Ubuntu 24.04, met dezelfde apt-pakketten als de kiosk.
+- De ontwikkelmachine is Windows, maar de app is alleen voor Linux bedoeld. `os.geteuid`, `os.killpg`, `pkill` en `/run/user/<uid>` bestaan niet op Windows. De app zelf start daarom niet op Windows, maar alle tests draaien daar wel. Lokaal heb je daarvoor `pytest` en `flask` nodig.
 - [install.sh](install.sh) installeert of werkt bij op de kiosk: kopieert `app/` en `run.py` naar `/opt/kiosk-player` en maakt de systemd-dienst `kiosk-player` aan, die draait als de kioskgebruiker. [uninstall.sh](uninstall.sh) verwijdert het programma en laat de gegevensmap staan, behalve met `--alles`.
 
 ## Architectuur
@@ -40,10 +41,12 @@ Die staat in `KIOSK_DATA_DIR`, standaard `~/kiosk-player`, en bevat `media/`, `t
 
 ## Afspraken en valkuilen
 
-- **Locking:** wie `store.data` wijzigt, houdt `store.lock` vast (een RLock) en roept daarna `store.save()` aan. Roep na een wijziging die invloed heeft op wat er speelt `controller.poke()` of `controller.tick()` aan.
+- **Locking:** wie `store.data` wijzigt, houdt `store.lock` vast (een RLock) en roept daarna `store.save()` aan. Roep na een wijziging die invloed heeft op wat er speelt `controller.poke()` of `controller.tick()` aan. Er is een tweede lock, `Controller.tick_lock`. Neem altijd eerst `tick_lock` en dan `store.lock`, nooit andersom, en roep `tick()` niet aan terwijl je `store.lock` vasthoudt. VLC starten of stoppen gebeurt alleen onder `tick_lock` en nooit onder `store.lock`, zodat de API en `status()` niet wachten op VLC.
+- **Sessies:** een sessie bevat een afgeleide van de wachtwoord-hash (`pw_tag()` in `server.py`). Wijzig je het wachtwoord, dan zijn alle andere sessies daardoor ongeldig.
+- **VLC-instellingen:** `vlc_command` moet `vlc` of `cvlc` zijn, en de extra opties moeten met `--` beginnen. Opties die code laden, de interne bediening overnemen of bestanden wegschrijven staan in `BLOCKED_VLC_OPTIONS` en worden geweigerd. Zo kan de webinterface geen willekeurige commando's uitvoeren.
 - **CSRF:** elke POST, PUT en DELETE op `/api/` vereist de header `X-Requested-With: kiosk`. De `api()`-helper in `app.js` stuurt die mee. Nieuwe fetch- of XHR-aanroepen moeten dat ook doen.
 - **Validatie:** valideer invoer in `server.py` met de bestaande helpers en gooi `ApiError` met een Nederlandse melding. De frontend toont `error` uit de JSON-respons.
 - **Root:** de app weigert als root te draaien, omdat VLC dat niet wil. Alleen met `KIOSK_ALLOW_ROOT=1` lukt het wel.
-- **Tests:** er zijn alleen tests voor `schedule.py`. Houd die module vrij van I/O, zodat de tests overal draaien. Voeg een test toe als je de planningsregels wijzigt.
+- **Tests:** er zijn drie testbestanden. [test_schedule.py](tests/test_schedule.py) test de planningsregels; houd `schedule.py` vrij van I/O. [test_controller.py](tests/test_controller.py) test de regisseur met een `FakePlayer` in plaats van VLC. [test_server.py](tests/test_server.py) test login, sessies en validatie met de Flask-testclient. Voeg een test toe als je de planning, de logica in `desired()` of de beveiliging wijzigt.
 - **Documentatie:** verandert gedrag dat gebruikers zien, zoals de planning, de installatie of de instellingen, werk dan ook [README.md](README.md) bij.
 - De repository staat in een OneDrive-map. Zet testdata (`tmp-data/`), media en caches niet in git.

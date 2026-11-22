@@ -124,6 +124,8 @@ Sommige formaten, zoals mkv, spelen niet in elke browser. VLC op de kiosk speelt
 
 - De webinterface gebruikt gewoon http, beveiligd met een wachtwoord. Gebruik hem alleen binnen het eigen netwerk en zet de poort niet open naar internet. Wil je van buitenaf beheren, gebruik dan een VPN.
 - Na 5 verkeerde pogingen moet je een minuut wachten voordat je weer kunt inloggen.
+- Wijzig je het wachtwoord, dan worden alle andere browsers uitgelogd.
+- Onder **Instellingen** kun je als VLC-commando alleen `vlc` of `cvlc` invullen, en als extra opties alleen VLC-opties die met `--` beginnen. Opties die andere programma's laden of bestanden wegschrijven worden geweigerd.
 - VLC wordt alleen op de kiosk zelf bediend, via een interne poort met een wachtwoord dat elke keer anders is.
 - Kiosk Player weigert als root te draaien. Hij draait altijd als de kioskgebruiker.
 
@@ -135,4 +137,4 @@ Sommige formaten, zoals mkv, spelen niet in elke browser. VLC op de kiosk speelt
 - VLC wordt gestart als `cvlc --fullscreen --loop …` met `--extraintf=http`, zodat vorige, volgende en pauze werken en de pagina Nu ziet wat er speelt. De weergavetijd per afbeelding wordt per bestand meegegeven met `:image-duration=N`.
 - Elke 5 seconden bepaalt de planner wat er hoort te spelen. Is dat iets anders dan wat VLC speelt, dan start hij VLC opnieuw met de juiste lijst. Een wissel in de planning kan dus tot 5 seconden later op het scherm komen.
 - Wijzig je een wachtrij die op dat moment speelt, dan start VLC direct opnieuw met de nieuwe inhoud.
-- De tests voer je uit met `python3 -m pytest tests/`.
+- De tests voer je uit met `python3 -m pytest tests/`. Op Ubuntu heb je daarvoor `python3-pytest` nodig. GitHub voert ze bij elke push automatisch uit.
