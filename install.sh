@@ -41,6 +41,7 @@ mkdir -p "$APP_DIR"
 rm -rf "$APP_DIR/app" "$APP_DIR/app.prev" "$APP_DIR/app.failed" "$APP_DIR/app.swap" "$APP_DIR/.staging"
 rm -f "$APP_DIR/update-state.json"
 cp -r "$SRC/app" "$SRC/run.py" "$APP_DIR/"
+if [[ -f "$SRC/CHANGELOG.md" ]]; then cp "$SRC/CHANGELOG.md" "$APP_DIR/app/"; fi  # getoond in de webinterface
 find "$APP_DIR" -name __pycache__ -prune -exec rm -rf {} +
 # Welke versie dit is: uit een git-checkout, of doorgegeven door get.sh. Uit een zip weten we het niet.
 GIT_SHA="$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)"

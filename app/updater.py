@@ -36,6 +36,8 @@ log = logging.getLogger("kiosk.updater")
 
 GITHUB_API = "https://api.github.com"
 CODELOAD = "https://codeload.github.com"
+RAW = "https://raw.githubusercontent.com"
+CHANGELOG = "CHANGELOG.md"
 MAX_DOWNLOAD = 50 * 1024 ** 2
 CACHE_SECONDS = 60
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -44,9 +46,10 @@ REQUIRED = ("app/__init__.py", "app/server.py", "app/static/index.html")
 
 
 class UpdateError(Exception):
-    def __init__(self, message: str, status: int = 400):
+    def __init__(self, message: str, status: int = 400, not_found: bool = False):
         super().__init__(message)
         self.status = status
+        self.not_found = not_found
 
 
 def now_iso() -> str:
@@ -84,6 +87,7 @@ class Updater:
         self.lock = threading.Lock()
         self.job: dict = {"status": "idle"}
         self._cache: dict = {}
+        self._changelogs: dict = {}
 
     # --- paden ----------------------------------------------------------------
     def _p(self, *parts) -> str:
@@ -147,7 +151,8 @@ class Updater:
             return urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
-                raise UpdateError("Niet gevonden op GitHub. Bestaat de repository of branch nog?", 502)
+                raise UpdateError("Niet gevonden op GitHub. Bestaat de repository of branch nog?", 502,
+                                  not_found=True)
             if exc.code in (403, 429):
                 raise UpdateError("GitHub weigert het verzoek, waarschijnlijk door de limiet van "
                                   "60 verzoeken per uur. Probeer het later opnieuw.", 502)
@@ -205,6 +210,22 @@ class Updater:
             if b["name"] == branch and b["sha"] and SHA_RE.match(b["sha"]):
                 return b["sha"]
         raise UpdateError(f"Branch '{branch}' bestaat niet (meer) op GitHub", 404)
+
+    def changelog(self, branch: str) -> dict:
+        """CHANGELOG.md van de nieuwste commit op een branch, of text=None als die er geen heeft."""
+        sha = self._branch_sha(branch)
+        if sha not in self._changelogs:
+            try:
+                raw = self._get(f"{RAW}/{self.repo}/{sha}/{CHANGELOG}", limit=1024 ** 2)
+                text = raw.decode("utf-8", "replace")
+            except UpdateError as exc:
+                if not exc.not_found:
+                    raise
+                text = None  # oudere versies hebben nog geen changelog
+            if len(self._changelogs) > 50:
+                self._changelogs.clear()
+            self._changelogs[sha] = text  # een commit verandert nooit: altijd te cachen
+        return {"branch": branch, "sha": sha, "text": self._changelogs[sha]}
 
     def commit(self, branch: str) -> dict:
         sha = self._branch_sha(branch)
@@ -327,6 +348,10 @@ class Updater:
             raise UpdateError("De nieuwe versie kan niet geladen worden: " + (lines[-1] if lines else "onbekende fout"))
 
     def _install(self, new_app: str, info: dict) -> None:
+        # De changelog gaat mee in app/, zodat hij altijd bij de draaiende versie hoort.
+        changelog = os.path.join(os.path.dirname(new_app), CHANGELOG)
+        if os.path.isfile(changelog):
+            shutil.copyfile(changelog, os.path.join(new_app, CHANGELOG))
         shutil.rmtree(self.prev_dir, ignore_errors=True)
         shutil.rmtree(self._p("app.failed"), ignore_errors=True)
         system.rename(self.current_dir, self.prev_dir)

@@ -1044,7 +1044,7 @@ function renderSettings() {
       <section class="panel">
         <h2>Over deze kiosk</h2>
         <dl class="about">
-          <dt>Versie</dt><dd>Kiosk Player ${esc(info.version)}</dd>
+          <dt>Versie</dt><dd>Kiosk Player ${esc(info.version)} · <button class="btn ghost small" type="button" data-act="changelog">Changelog</button></dd>
           <dt>Systeem</dt><dd>${win ? "Windows" : "Linux"}</dd>
           <dt>Gebruiker</dt><dd>${esc(info.user)}</dd>
           <dt>Gegevensmap</dt><dd>${esc(info.data_dir)}</dd>
@@ -1164,10 +1164,28 @@ function renderUpdate() {
     const ready = c && !c.error;
     const label = ready && c.same ? "Opnieuw installeren" : S.updSel === br.default ? "Bijwerken" : "Deze versie testen";
     h.push(`<div class="row"><button class="btn ${ready && c.same ? "" : "primary"}" type="button" data-act="upd-go" ${busy || !ready ? "disabled" : ""}>${label}</button>${back}
+      <button class="btn ghost small" type="button" data-act="upd-news" ${ready ? "" : "disabled"}>Wat is er nieuw</button>
       <button class="btn ghost small" type="button" data-act="upd-refresh" ${busy ? "disabled" : ""}>Vernieuwen</button></div>`);
   } else if (back) h.push(`<div class="row">${back}</div>`);
   el.innerHTML = h.join("");
   $("#updBranch")?.addEventListener("change", (e) => { S.updSel = e.target.value; loadCommit(); });
+}
+
+// branch = null: de changelog van de geïnstalleerde versie; anders die van de nieuwste commit op GitHub.
+async function showChangelog(branch) {
+  let r;
+  try {
+    r = branch ? await api("GET", `/api/update/changelog?branch=${enc(branch)}`) : await api("GET", "/api/changelog");
+  } catch (e) { fail(e); return; }
+  const v = branch ? null : r.installed || {};
+  const title = branch ? `Changelog van ${branch}` : "Changelog";
+  const note = branch
+    ? `Nieuwste versie op GitHub: <code>${esc(short(r.sha))}</code>.${r.sha === S.upd?.installed?.sha ? " Dit is de versie die nu draait." : ""}`
+    : `Geïnstalleerde versie: ${versionLabel(v)}.`;
+  const body = r.text
+    ? `<p class="muted small">${note}</p><div class="md">${renderMarkdown(r.text)}</div>`
+    : `<p class="muted small">${note}</p><p>Deze versie heeft nog geen changelog.</p>`;
+  openDialog({ title, body, wide: true, foot: `<button class="btn" type="button" data-close>Sluiten</button>` });
 }
 
 async function startUpdate() {
@@ -1287,6 +1305,8 @@ view.addEventListener("click", async (e) => {
     // software-update
     case "upd-go": return startUpdate();
     case "upd-back": return rollbackUpdate();
+    case "changelog": return showChangelog(null);
+    case "upd-news": return showChangelog(S.updSel);
     case "upd-refresh":
       S.updBranches = null; S.updCommit = null;
       return loadUpdate();

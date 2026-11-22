@@ -649,6 +649,19 @@ def create_app(data_dir: str) -> Flask:
     def api_update_commit():
         return jsonify(updater.commit(request.args.get("branch", "")))
 
+    @app.get("/api/update/changelog")
+    def api_update_changelog():
+        return jsonify(updater.changelog(request.args.get("branch", "")))
+
+    @app.get("/api/changelog")
+    def api_changelog():
+        # Geïnstalleerd: app/CHANGELOG.md. In een ontwikkelmap: CHANGELOG.md naast app/.
+        for path in (os.path.join(HERE, "CHANGELOG.md"), os.path.join(os.path.dirname(HERE), "CHANGELOG.md")):
+            if os.path.isfile(path):
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    return jsonify(text=f.read(), installed=updater.installed())
+        return jsonify(text=None, installed=updater.installed())
+
     @app.post("/api/update")
     def api_update_start():
         updater.start(body().get("branch"))

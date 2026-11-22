@@ -111,6 +111,8 @@ foreach ($name in 'app', 'app.prev', 'app.failed', 'app.swap', '.staging') {
 Remove-Item -Force (Join-Path $InstallDir 'update-state.json') -ErrorAction SilentlyContinue
 Copy-Item -Recurse (Join-Path $Src 'app') $InstallDir
 Copy-Item (Join-Path $Src 'run.py') $InstallDir
+$changelog = Join-Path $Src 'CHANGELOG.md'   # getoond in de webinterface
+if (Test-Path $changelog) { Copy-Item $changelog (Join-Path $InstallDir 'app') }
 Get-ChildItem $InstallDir -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 
 Step "Python-omgeving met Flask en waitress"

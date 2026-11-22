@@ -410,6 +410,16 @@ button.seg:hover { filter: brightness(1.08); }
 dl.about { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 0; }
 dl.about dt { color: var(--muted); }
 dl.about dd { margin: 0; overflow-wrap: anywhere; }
+.md { line-height: 1.55; max-width: 78ch; }
+.md > * + * { margin-top: 10px; }
+.md h2 { font-size: 20px; }
+.md h3 { font-size: 17px; margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); }
+.md h4 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 18px; }
+.md ul { padding-left: 20px; }
+.md li + li { margin-top: 6px; }
+.md a { color: var(--accent); }
+.md code, .muted code { font-family: ui-monospace, "Cascadia Mono", "Ubuntu Mono", Consolas, monospace; font-size: .9em;
+  background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
 .upd > * + * { margin-top: 16px; }
 .upd .banner { margin-top: 16px; }
 .upd select { width: 100%; }

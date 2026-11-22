@@ -151,6 +151,14 @@ def test_main_starts_the_web_server(tmp_path, monkeypatch, with_waitress):
         assert calls["max_request_body_size"] > 1024 ** 3
 
 
+def test_changelog_endpoint(app):
+    c = app.test_client()
+    assert c.get("/api/changelog").status_code == 401
+    login(c)
+    r = c.get("/api/changelog").get_json()
+    assert r["text"] and r["text"].startswith("# Changelog")  # in een ontwikkelmap: CHANGELOG.md naast app/
+
+
 def test_update_status_and_refusal_in_dev_checkout(app):
     c = app.test_client()
     login(c)

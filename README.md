@@ -9,6 +9,8 @@ Je hebt er geen ssh-commando's meer voor nodig.
 - **Nu**: zie wat er op het scherm staat en bedien VLC met vorige, pauze, volgende, stop en herstart. Je kunt ook direct een wachtrij starten.
 - Stopt VLC onverwacht, dan start Kiosk Player hem vanzelf opnieuw.
 
+Wat er per versie veranderd is, staat in de [changelog](CHANGELOG.md). Die lees je ook in de webinterface, onder **Instellingen**.
+
 ---
 
 ## Snel installeren
@@ -79,7 +81,7 @@ Wil je een andere poort, start het script dan zo: `sudo KIOSK_PORT=8090 ./instal
 
 Bijwerken kan via **Instellingen → Software-update**. Je ziet daar welke versie er nu draait en of er op GitHub een nieuwere is.
 
-1. Kies bij **Branch** welke versie je wilt. Meestal is dat *main (standaard)*. Een andere branch kies je om een testversie te proberen.
+1. Kies bij **Branch** welke versie je wilt. Meestal is dat *main (standaard)*. Een andere branch kies je om een testversie te proberen. Met **Wat is er nieuw** lees je eerst de changelog van die versie.
 2. Kies **Bijwerken**. Bij een andere branch heet de knop **Deze versie testen**. Kiosk Player downloadt de versie, controleert hem, installeert hem en herstart. Het scherm is dan ongeveer 10 seconden zwart, waarna de pagina vanzelf opnieuw laadt.
 3. Wil je terug, kies dan **Vorige versie terugzetten**.
 

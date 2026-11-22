@@ -22,6 +22,7 @@ GOOD_FILES = {
     "app/server.py": "VERSION = 'nieuw'\n",
     "app/updater.py": "",
     "app/static/index.html": "<!doctype html>",
+    "CHANGELOG.md": "# Changelog\n\n## Nieuw\n",
 }
 
 
@@ -59,6 +60,14 @@ class FakeGitHub(Updater):
         with open(dest, "wb") as f:
             f.write(tarball(self.files))
 
+    raw_requests: list = []
+
+    def _get(self, url, limit=2 * 1024 ** 2):
+        self.raw_requests.append(url)
+        if url.endswith(f"/{SHA_TEST}/CHANGELOG.md"):
+            return "# Changelog\n\n- Iets nieuws\n".encode()
+        raise UpdateError("Niet gevonden op GitHub", 502, not_found=True)
+
 
 @pytest.fixture
 def install(tmp_path):
@@ -91,6 +100,21 @@ def test_update_replaces_app_and_keeps_previous(install):
     assert version["previous"]["sha"] == SHA_OLD
     state = json.loads((install / "update-state.json").read_text())
     assert state["status"] == "trial" and state["sha"] == SHA_TEST
+    # de changelog hoort bij de versie in app/, en gaat bij terugzetten mee
+    assert "## Nieuw" in (install / "app" / "CHANGELOG.md").read_text()
+    assert not (install / "app.prev" / "CHANGELOG.md").exists()
+
+
+def test_changelog_of_branch(install):
+    up, _ = make(install)
+    up.raw_requests = []
+    r = up.changelog("test/nieuw")
+    assert r["sha"] == SHA_TEST and "Iets nieuws" in r["text"]
+    up.changelog("test/nieuw")
+    assert len(up.raw_requests) == 1  # per commit gecachet
+    assert up.changelog("main")["text"] is None  # oudere versie zonder changelog
+    with pytest.raises(UpdateError):
+        up.changelog("bestaat-niet")
 
 
 @pytest.mark.parametrize("files, message", [
