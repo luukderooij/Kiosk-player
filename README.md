@@ -44,6 +44,24 @@ Wil je een andere branch of poort, zet dan eerst een omgevingsvariabele:
 
 Dezelfde regel werkt ook om bij te werken. Je media, wachtrijen, planning en wachtwoord blijven bewaard.
 
+### Verwijderen
+
+Het installatiescript zet een verwijderscript op de kiosk. Media en instellingen blijven bij verwijderen bewaard, tenzij je `--alles` (Ubuntu) of `-Alles` (Windows) toevoegt. Dan vraagt het script eerst nog om bevestiging.
+
+**Ubuntu:**
+
+```bash
+sudo kiosk-player-uninstall
+```
+
+**Windows:** via Instellingen → Apps → *Kiosk Player* → Verwijderen, of in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\KioskPlayer\uninstall.ps1"
+```
+
+> Heb je Kiosk Player geïnstalleerd vóór de versie die het verwijderscript neerzet (zie de [changelog](CHANGELOG.md))? Voer dan eerst de installatieregel hierboven nog een keer uit. Of download het verwijderscript los: op Ubuntu `curl -fsSLO https://raw.githubusercontent.com/luukderooij/Kiosk-player/main/uninstall.sh && sudo bash uninstall.sh`, op Windows `irm https://raw.githubusercontent.com/luukderooij/Kiosk-player/main/uninstall.ps1 -OutFile $env:TEMP\uninstall.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\uninstall.ps1`.
+
 > Een script van internet direct uitvoeren betekent dat je de inhoud vertrouwt. Wil je het eerst lezen, download het dan, bekijk het, en voer het daarna uit:
 > `curl -fsSLO https://raw.githubusercontent.com/luukderooij/Kiosk-player/main/get.sh && less get.sh && bash get.sh`
 
@@ -164,7 +182,7 @@ Op de pagina **Nu** kun je een wachtrij starten of op **Stop** drukken. Die keuz
 | Herstarten | `sudo systemctl restart kiosk-player` |
 | Stoppen (VLC stopt ook) | `sudo systemctl stop kiosk-player` |
 | Wachtwoord vergeten | `sudo -u protectiepartners env KIOSK_DATA_DIR=/home/protectiepartners/kiosk-player python3 /opt/kiosk-player/run.py set-password` en daarna `sudo systemctl restart kiosk-player` |
-| Verwijderen (media blijft) | `sudo ./uninstall.sh` |
+| Verwijderen (media blijft) | `sudo kiosk-player-uninstall` |
 
 ### Windows
 
@@ -178,7 +196,7 @@ Voer deze commando's uit in PowerShell, als de kioskgebruiker.
 | Herstarten | `Stop-ScheduledTask 'Kiosk Player'; Start-ScheduledTask 'Kiosk Player'` |
 | Stoppen (VLC stopt ook) | `Stop-ScheduledTask 'Kiosk Player'` |
 | Wachtwoord vergeten | `& "$env:LOCALAPPDATA\KioskPlayer\.venv\Scripts\python.exe" "$env:LOCALAPPDATA\KioskPlayer\run.py" set-password` en daarna herstarten |
-| Verwijderen (media blijft) | `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` |
+| Verwijderen (media blijft) | Instellingen → Apps → *Kiosk Player*, of `powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\KioskPlayer\uninstall.ps1"` |
 
 ### Gegevens
 

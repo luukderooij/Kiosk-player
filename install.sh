@@ -56,6 +56,9 @@ with open(path, "w") as f:
                "installed_at": datetime.datetime.now().isoformat(timespec="seconds"),
                "previous": None}, f, indent=2)
 PY
+# Verwijderscript buiten de programmamap en van root: het draait met sudo, dus de kioskgebruiker
+# (eigenaar van $APP_DIR) mag het niet kunnen aanpassen.
+install -o root -g root -m 755 "$SRC/uninstall.sh" /usr/local/sbin/kiosk-player-uninstall
 # De kioskgebruiker is eigenaar, zodat de update via de website app/ kan vervangen.
 chown -R "$KIOSK_USER:$KIOSK_GROUP" "$APP_DIR"
 chmod -R u+rwX,go+rX "$APP_DIR"
@@ -142,3 +145,4 @@ else
   exit 1
 fi
 echo "Media, wachtrijen en planning staan in $DATA_DIR"
+echo "Verwijderen kan later met:  sudo kiosk-player-uninstall"

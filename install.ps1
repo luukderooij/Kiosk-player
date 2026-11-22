@@ -111,6 +111,7 @@ foreach ($name in 'app', 'app.prev', 'app.failed', 'app.swap', '.staging') {
 Remove-Item -Force (Join-Path $InstallDir 'update-state.json') -ErrorAction SilentlyContinue
 Copy-Item -Recurse (Join-Path $Src 'app') $InstallDir
 Copy-Item (Join-Path $Src 'run.py') $InstallDir
+Copy-Item -Force (Join-Path $Src 'uninstall.ps1') $InstallDir
 $changelog = Join-Path $Src 'CHANGELOG.md'   # getoond in de webinterface
 if (Test-Path $changelog) { Copy-Item $changelog (Join-Path $InstallDir 'app') }
 Get-ChildItem $InstallDir -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
@@ -200,6 +201,25 @@ try {
     $lnk.Save()
 }
 
+Step "Registreren bij Instellingen > Apps (om later te verwijderen)"
+$UninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KioskPlayer'
+$uninstallPs1 = Join-Path $InstallDir 'uninstall.ps1'
+New-Item -Path $UninstallKey -Force | Out-Null
+$entry = @{
+    DisplayName     = 'Kiosk Player'
+    Publisher       = 'Kiosk Player'
+    InstallLocation = $InstallDir
+    UninstallString = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$uninstallPs1`" -Pauze"
+    DisplayIcon     = (Find-Vlc)
+    InstallDate     = (Get-Date -Format 'yyyyMMdd')
+}
+foreach ($name in $entry.Keys) {
+    if ($entry[$name]) { New-ItemProperty -Path $UninstallKey -Name $name -Value $entry[$name] -PropertyType String -Force | Out-Null }
+}
+foreach ($name in 'NoModify', 'NoRepair') {
+    New-ItemProperty -Path $UninstallKey -Name $name -Value 1 -PropertyType DWord -Force | Out-Null
+}
+
 Step "Firewall: poort $PortNow openzetten voor het eigen netwerk"
 $fw = "Remove-NetFirewallRule -DisplayName 'Kiosk Player' -ErrorAction SilentlyContinue; " +
       "New-NetFirewallRule -DisplayName 'Kiosk Player' -Direction Inbound -Protocol TCP -LocalPort $PortNow -Action Allow -Profile Private,Domain | Out-Null"
@@ -237,3 +257,5 @@ if ($up) {
     exit 1
 }
 Write-Host "Media, wachtrijen en planning staan in $DataDir"
+Write-Host "Verwijderen kan later via Instellingen > Apps > Kiosk Player, of met:"
+Write-Host "    powershell -ExecutionPolicy Bypass -File `"$uninstallPs1`""

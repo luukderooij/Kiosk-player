@@ -10,7 +10,8 @@ Alles hieronder staat op `main`, maar heeft nog geen eigen versienummer. Het pro
 
 ### Toegevoegd
 
-- **Changelog in de webinterface.** Met **Wat is er nieuw** in het paneel Software-update lees je de changelog van de gekozen branch voordat je bijwerkt. Bij **Over deze kiosk** staat de changelog van de versie die nu draait.
+- **Verwijderen zonder de installatiemap.** Het installatiescript zet nu een verwijderscript op de kiosk. Op Ubuntu verwijder je met `sudo kiosk-player-uninstall`. Op Windows staat Kiosk Player in **Instellingen → Apps**, en daar verwijder je het zoals elk ander programma. Bij een installatie in één regel bleef er voorheen geen verwijderscript achter. Voer de installatie één keer opnieuw uit om het te krijgen.
+- **Changelog in de webinterface.** Met **Wat is er nieuw** in het paneel Software-update lees je de changelog van de gekozen branch voordat je bijwerkt. Bij **Over deze kiosk** staat de changelog van de versie die nu draait. (`46a0826`)
 - **Installeren in één regel.** Op Ubuntu met `curl … | bash`, op Windows met `irm … | iex` in PowerShell of via cmd. Met `KIOSK_BRANCH` en `KIOSK_PORT` kies je een andere branch of poort. Na zo'n installatie weet het paneel Software-update meteen welke versie er draait. Zie *Snel installeren* in de README. (`369d1b7`)
 - **Windows 10 en 11** worden ondersteund, naast Ubuntu 24.04. `install.ps1` installeert zonder administratorrechten, haalt Python, VLC en ffmpeg op met winget, en start Kiosk Player bij het inloggen via de geplande taak *Kiosk Player*. `uninstall.ps1` verwijdert het weer. Op de pagina Instellingen staan het systeem en de gevonden vlc.exe; het veld Display staat daar alleen nog op Ubuntu. (`a21c426`)
 - **Bijwerken via de website**, in het paneel **Instellingen → Software-update**. Je ziet welke versie er draait en wat er nieuw is op GitHub. Je kunt bijwerken, een andere branch als testversie installeren, en de vorige versie terugzetten. Start een nieuwe versie drie keer niet goed op, dan zet Kiosk Player vanzelf de vorige versie terug. (`8fb2345`)
@@ -24,6 +25,8 @@ Alles hieronder staat op `main`, maar heeft nog geen eigen versienummer. Het pro
 ### Opgelost
 
 - Versie `a21c426` en `369d1b7` startten niet als waitress geïnstalleerd was, en dat is bij elke installatie zo, op Ubuntu en op Windows. Heb je via de website naar zo'n versie bijgewerkt, dan is de vorige versie vanzelf teruggezet. Heb je zo'n versie nieuw geïnstalleerd, voer de installatie dan opnieuw uit. Bijwerken via de website kan in dat geval niet, omdat de website niet start. (`1970bed`)
+- Verwijderen op Ubuntu liet de firewallregel voor de webpoort staan. Die wordt nu ook weggehaald.
+- Verwijderen op Windows liet VLC draaien. Nu stopt Kiosk Player VLC eerst netjes. Staat er nog een venster in de programmamap, dan geeft het script een duidelijke melding en ruimt het de rest toch op.
 - Stonden een geplande wachtrij én de standaardwachtrij allebei op **één keer spelen**, dan speelden ze eindeloos om en om. Nu speelt er na afloop van beide niets meer, tot de regel opnieuw begint. (`73ca6b6`)
 
 ### Beveiliging
