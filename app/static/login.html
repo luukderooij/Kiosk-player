@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inloggen – Kiosk Player</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="login">
+  <form id="f">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Kiosk Player</div>
+    <div class="panel">
+      <h1>Inloggen</h1>
+      <p class="muted">Beheer wat er op het scherm in het pand te zien is.</p>
+      <label class="field"><span>Wachtwoord</span>
+        <input type="password" id="pw" autocomplete="current-password" required autofocus></label>
+      <p class="err" id="err" role="alert"></p>
+      <button class="btn primary" type="submit" style="width:100%">Inloggen</button>
+    </div>
+  </form>
+</main>
+<script>
+document.getElementById("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("err");
+  err.textContent = "";
+  const btn = e.target.querySelector("button");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "kiosk" },
+      body: JSON.stringify({ password: document.getElementById("pw").value }),
+    });
+    if (res.ok) { location.href = "/"; return; }
+    const data = await res.json().catch(() => ({}));
+    err.textContent = data.error || "Inloggen mislukt";
+  } catch {
+    err.textContent = "De kiosk is niet bereikbaar";
+  }
+  btn.disabled = false;
+});
+</script>
+</body>
+</html>

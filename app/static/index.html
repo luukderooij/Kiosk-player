@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiosk Player</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Kiosk Player</div>
+  <nav class="tabs" aria-label="Hoofdmenu">
+    <a href="#nu">Nu</a>
+    <a href="#media">Media</a>
+    <a href="#wachtrijen">Wachtrijen</a>
+    <a href="#planning">Planning</a>
+    <a href="#instellingen">Instellingen</a>
+  </nav>
+  <div class="top-status" id="topStatus" aria-live="polite"></div>
+  <div class="clock" id="clock" title="Tijd op de kiosk"></div>
+  <button class="btn ghost small" id="logout" type="button">Uitloggen</button>
+</header>
+<main id="view" tabindex="-1"></main>
+<div id="toasts" aria-live="polite"></div>
+<dialog id="dlg"></dialog>
+<script src="/static/app.js"></script>
+</body>
+</html>
