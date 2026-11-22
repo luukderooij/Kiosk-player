@@ -29,6 +29,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+from . import system
 from .store import atomic_write_json
 
 log = logging.getLogger("kiosk.updater")
@@ -120,9 +121,9 @@ class Updater:
             return "Dit is een ontwikkelmap met git. Werk die bij met git pull."
         if not (os.access(self.app_dir, os.W_OK) and os.access(self.current_dir, os.W_OK)):
             return (f"De programmamap {self.app_dir} is niet schrijfbaar voor deze gebruiker. "
-                    "Voer op de kiosk eenmalig sudo ./install.sh opnieuw uit.")
-        if self.require_systemd and "INVOCATION_ID" not in os.environ:
-            return "Kiosk Player draait niet als systemd-dienst en kan zichzelf daarom niet herstarten."
+                    + system.reinstall_hint())
+        if self.require_systemd and not system.supervised():
+            return system.not_supervised_message()
         return None
 
     def status(self) -> dict:
@@ -318,7 +319,7 @@ class Updater:
         try:
             res = subprocess.run(
                 [sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); import app.server", root],
-                cwd=root, env=env, capture_output=True, text=True, timeout=60)
+                cwd=root, env=env, capture_output=True, text=True, timeout=60, **system.child_kwargs())
         except subprocess.TimeoutExpired:
             raise UpdateError("De nieuwe versie laden duurde te lang")
         if res.returncode != 0:
@@ -328,11 +329,11 @@ class Updater:
     def _install(self, new_app: str, info: dict) -> None:
         shutil.rmtree(self.prev_dir, ignore_errors=True)
         shutil.rmtree(self._p("app.failed"), ignore_errors=True)
-        os.rename(self.current_dir, self.prev_dir)
+        system.rename(self.current_dir, self.prev_dir)
         try:
-            os.rename(new_app, self.current_dir)
+            system.rename(new_app, self.current_dir)
         except OSError:
-            os.rename(self.prev_dir, self.current_dir)
+            system.rename(self.prev_dir, self.current_dir)
             raise
         old = self.installed()
         old.pop("previous", None)
@@ -352,9 +353,9 @@ class Updater:
         try:
             tmp = self._p("app.swap")
             shutil.rmtree(tmp, ignore_errors=True)
-            os.rename(self.current_dir, tmp)
-            os.rename(self.prev_dir, self.current_dir)
-            os.rename(tmp, self.prev_dir)
+            system.rename(self.current_dir, tmp)
+            system.rename(self.prev_dir, self.current_dir)
+            system.rename(tmp, self.prev_dir)
             cur = self.installed()
             prev = cur.pop("previous", None) or {"source": "onbekend"}
             atomic_write_json(self.version_path, dict(prev, installed_at=now_iso(), previous=cur or None))

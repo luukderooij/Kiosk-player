@@ -10,10 +10,26 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app.server import ApiError, create_app, validate_extra_args, validate_vlc_command  # noqa: E402
+from app import system  # noqa: E402
 from app.store import Config  # noqa: E402
 
 H = {"X-Requested-With": "kiosk"}
 PW = "geheim-wachtwoord"
+ON_WINDOWS = pytest.mark.skipif(os.name != "nt", reason="Windows-paden worden met ntpath vergeleken")
+
+
+@pytest.fixture
+def linux(monkeypatch):
+    monkeypatch.setattr(system, "IS_WINDOWS", False)
+
+
+@pytest.fixture
+def windows(monkeypatch):
+    monkeypatch.setattr(system, "IS_WINDOWS", True)
+    monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
+    monkeypatch.setenv("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    monkeypatch.delenv("ProgramW6432", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\kiosk\AppData\Local")
 
 
 @pytest.fixture
@@ -54,13 +70,30 @@ def test_password_change_logs_out_other_sessions(app):
 
 
 @pytest.mark.parametrize("cmd", ["cvlc", "vlc", "/usr/bin/cvlc", "cvlc --no-xlib", "/snap/bin/vlc --vout=x11"])
-def test_vlc_command_allowed(cmd):
+def test_vlc_command_allowed(cmd, linux):
     validate_vlc_command(cmd)
 
 
 @pytest.mark.parametrize("cmd", ["bash -c 'rm -rf ~'", "/tmp/cvlc", "python3", "cvlc /etc/passwd",
                                  "cvlc --lua-intf=x", "cvlc --sout=file/ts:/home/x"])
-def test_vlc_command_blocked(cmd):
+def test_vlc_command_blocked(cmd, linux):
+    with pytest.raises(ApiError):
+        validate_vlc_command(cmd)
+
+
+@ON_WINDOWS
+@pytest.mark.parametrize("cmd", ["vlc", "cvlc", "VLC.exe", r'"C:\Program Files\VideoLAN\VLC\vlc.exe"',
+                                 r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+                                 r"C:\Users\kiosk\AppData\Local\Programs\VideoLAN\VLC\vlc.exe"])
+def test_vlc_command_allowed_windows(cmd, windows):
+    validate_vlc_command(cmd)
+
+
+@ON_WINDOWS
+@pytest.mark.parametrize("cmd", [r"C:\Windows\System32\cmd.exe", r"C:\Temp\vlc.exe", "powershell",
+                                 r"C:\Program Files\VideoLAN\VLC\..\..\..\Temp\vlc.exe",
+                                 r"C:\Program Files\VideoLAN\VLC\vlc.exe --lua-intf=x"])
+def test_vlc_command_blocked_windows(cmd, windows):
     with pytest.raises(ApiError):
         validate_vlc_command(cmd)
 
@@ -77,6 +110,19 @@ def test_extra_args_blocked(extra):
         validate_extra_args(extra)
 
 
+@pytest.mark.parametrize("raw", ["wachtwoord-é-test\n".encode(), "﻿wachtwoord-é-test\r\n".encode()])
+def test_set_password_from_pipe_handles_bom_and_crlf(tmp_path, raw):
+    import json
+    import subprocess
+
+    from werkzeug.security import check_password_hash
+    env = dict(os.environ, KIOSK_DATA_DIR=str(tmp_path))
+    run_py = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run.py")
+    subprocess.run([sys.executable, run_py, "set-password"], input=raw, env=env, check=True, capture_output=True)
+    h = json.load(open(tmp_path / "config.json"))["password_hash"]
+    assert check_password_hash(h, "wachtwoord-é-test")
+
+
 def test_update_status_and_refusal_in_dev_checkout(app):
     c = app.test_client()
     login(c)
@@ -87,7 +133,7 @@ def test_update_status_and_refusal_in_dev_checkout(app):
     assert c.post("/api/update", json={"branch": "main"}).status_code == 403
 
 
-def test_settings_endpoint_rejects_bad_vlc_command(app):
+def test_settings_endpoint_rejects_bad_vlc_command(app, linux):
     c = app.test_client()
     login(c)
     r = c.put("/api/settings", headers=H, json={"vlc_command": "bash"})

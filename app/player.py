@@ -2,19 +2,19 @@
 from __future__ import annotations
 
 import base64
-import glob
 import json
 import logging
 import os
 import secrets
 import shlex
-import signal
 import socket
 import subprocess
 import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+
+from . import system
 
 log = logging.getLogger("kiosk.player")
 
@@ -57,31 +57,11 @@ class Player:
     # --- omgeving ------------------------------------------------------------
     @staticmethod
     def environment(display: str) -> dict:
-        env = dict(os.environ)
-        env.pop("WAYLAND_DISPLAY", None)  # VLC 3 via X11/XWayland, net als met DISPLAY=:0
-        env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
-        env["DISPLAY"] = display or ":0"
-        runtime = f"/run/user/{os.getuid()}"
-        if os.path.isdir(runtime):
-            env["XDG_RUNTIME_DIR"] = runtime          # geluid via PipeWire/Pulse
-            if os.path.exists(os.path.join(runtime, "bus")):
-                env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={runtime}/bus"  # schermbeveiliging blokkeren
-            xauth = os.path.join(runtime, "gdm", "Xauthority")
-            mutter = sorted(glob.glob(os.path.join(runtime, ".mutter-Xwaylandauth.*")),
-                            key=os.path.getmtime)
-            if os.path.exists(xauth):
-                env["XAUTHORITY"] = xauth
-            elif mutter:
-                env["XAUTHORITY"] = mutter[-1]
-        if "XAUTHORITY" not in env:
-            home_auth = os.path.expanduser("~/.Xauthority")
-            if os.path.exists(home_auth):
-                env["XAUTHORITY"] = home_auth
-        return env
+        return system.player_environment(display)
 
     def build_command(self, spec: PlaySpec) -> list:
         s = spec.settings
-        cmd = shlex.split(s.get("vlc_command") or "cvlc")
+        cmd = system.vlc_base_command(s.get("vlc_command") or "cvlc")
         cmd += ["--fullscreen", "--no-video-title-show", "--no-osd",
                 f"--image-duration={int(s.get('default_image_duration') or 10)}"]
         cmd += ["--loop"] if spec.loop else ["--no-loop", "--play-and-exit"]
@@ -126,9 +106,7 @@ class Player:
         self.stop()
         s = spec.settings
         if s.get("kill_other_vlc", True):
-            subprocess.run(["pkill", "-u", str(os.getuid()), "-x", "vlc"],
-                           capture_output=True)
-            time.sleep(0.4)
+            system.kill_other_vlc()
         self.http_port = self._free_port(int(s.get("vlc_http_port") or 18080))
         self.http_password = secrets.token_urlsafe(12)
         self.cmd = self.build_command(spec)
@@ -139,7 +117,7 @@ class Player:
             self.proc = subprocess.Popen(
                 self.cmd, env=self.environment(s.get("display", ":0")),
                 stdin=subprocess.DEVNULL, stdout=logf, stderr=subprocess.STDOUT,
-                start_new_session=True, cwd=os.path.expanduser("~"))
+                cwd=os.path.expanduser("~"), **system.popen_kwargs())
         self.spec = spec
         self.sig = spec.signature()
         self.started_at = time.time()
@@ -151,16 +129,7 @@ class Player:
         if proc is not None and proc.poll() is None:
             self._stopping = True
             try:
-                os.killpg(proc.pid, signal.SIGTERM)
-                proc.wait(timeout=5)
-            except ProcessLookupError:
-                pass
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                proc.wait(timeout=5)
+                system.terminate(proc)
             finally:
                 self._stopping = False
         self.proc = None

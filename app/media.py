@@ -11,6 +11,7 @@ import subprocess
 import threading
 import unicodedata
 
+from . import system
 from .store import atomic_write_json
 
 log = logging.getLogger("kiosk.media")
@@ -51,8 +52,8 @@ class MediaLibrary:
                     self.meta = json.load(f)
             except (OSError, ValueError):
                 self.meta = {}
-        self.ffprobe = shutil.which("ffprobe")
-        self.ffmpeg = shutil.which("ffmpeg")
+        self.ffprobe = system.find_tool("ffprobe")
+        self.ffmpeg = system.find_tool("ffmpeg")
         self._jobs: queue.Queue = queue.Queue()
         self._pending: set = set()
         threading.Thread(target=self._worker, name="media-probe", daemon=True).start()
@@ -179,7 +180,7 @@ class MediaLibrary:
                     [self.ffprobe, "-v", "error", "-select_streams", "v:0",
                      "-show_entries", "stream=width,height:format=duration",
                      "-of", "json", path],
-                    capture_output=True, text=True, timeout=60)
+                    capture_output=True, text=True, timeout=60, **system.child_kwargs())
                 data = json.loads(out.stdout or "{}")
                 stream = (data.get("streams") or [{}])[0]
                 meta["width"] = stream.get("width")
@@ -202,7 +203,7 @@ class MediaLibrary:
                         "-vf", "scale=480:-2:force_original_aspect_ratio=decrease",
                         "-q:v", "4", tmp]
                 try:
-                    subprocess.run(cmd, capture_output=True, timeout=60)
+                    subprocess.run(cmd, capture_output=True, timeout=60, **system.child_kwargs())
                 except (subprocess.SubprocessError, OSError):
                     continue
                 if os.path.exists(tmp) and os.path.getsize(tmp) > 0:

@@ -1000,7 +1000,7 @@ async function saveSettings(changes, msg) {
 
 // =========================================================== INSTELLINGEN
 function renderSettings() {
-  const s = S.all.settings, info = S.all.info;
+  const s = S.all.settings, info = S.all.info, win = info.platform === "windows";
   view.innerHTML = `
   <div class="page-head"><div><h1>Instellingen</h1><p>Hoe VLC op de kiosk wordt gestart.</p></div></div>
   <div class="settings">
@@ -1008,13 +1008,16 @@ function renderSettings() {
       <h2>Weergave</h2>
       <form id="fVlc">
         <label class="field"><span>VLC-commando</span><input type="text" name="vlc_command" value="${esc(s.vlc_command)}" required>
-          <p class="hint">Meestal <b>cvlc</b>. Alleen vlc of cvlc is toegestaan. Opties als volledig scherm en herhalen voegt Kiosk Player zelf toe.</p></label>
+          <p class="hint">${win
+            ? `Laat op <b>vlc</b> staan: Kiosk Player zoekt vlc.exe zelf op${info.vlc ? ` (nu: ${esc(info.vlc)})` : ". <b>VLC is niet gevonden.</b>"}. Of vul het volledige pad naar vlc.exe in.`
+            : "Meestal <b>cvlc</b>. Alleen vlc of cvlc is toegestaan."} Opties als volledig scherm en herhalen voegt Kiosk Player zelf toe.</p></label>
         <div class="grid2">
-          <label class="field"><span>Display</span><input type="text" name="display" value="${esc(s.display)}" required><p class="hint">Net als DISPLAY=:0 in je ssh-commando.</p></label>
+          ${win ? `<input type="hidden" name="display" value="${esc(s.display)}">`
+            : `<label class="field"><span>Display</span><input type="text" name="display" value="${esc(s.display)}" required><p class="hint">Net als DISPLAY=:0 in je ssh-commando.</p></label>`}
           <label class="field"><span>Afbeeldingen standaard in beeld</span><div class="row" style="flex-wrap:nowrap"><input type="number" name="default_image_duration" min="1" max="86400" value="${s.default_image_duration}" class="narrow"><span class="muted">seconden</span></div>
             <p class="hint">Per afbeelding aan te passen in een wachtrij.</p></label>
         </div>
-        <label class="check"><input type="checkbox" name="kill_other_vlc" ${s.kill_other_vlc ? "checked" : ""}><span><b>Andere VLC-vensters sluiten</b><small>Bijvoorbeeld een VLC die je eerder met de hand via ssh startte</small></span></label>
+        <label class="check"><input type="checkbox" name="kill_other_vlc" ${s.kill_other_vlc ? "checked" : ""}><span><b>Andere VLC-vensters sluiten</b><small>Bijvoorbeeld een VLC die je eerder met de hand startte</small></span></label>
         <label class="field"><span>Extra VLC-opties</span><input type="text" name="extra_args" value="${esc(s.extra_args)}" placeholder="Bijvoorbeeld: --no-audio --aspect-ratio=16:9">
           <p class="hint">Worden aan elk VLC-commando toegevoegd. Alleen opties die met -- beginnen. Laat leeg als je het niet zeker weet.</p></label>
         <label class="field"><span>Interne poort voor VLC-bediening</span><input type="number" name="vlc_http_port" min="1024" max="65535" value="${s.vlc_http_port}" class="narrow" style="width:120px">
@@ -1042,6 +1045,7 @@ function renderSettings() {
         <h2>Over deze kiosk</h2>
         <dl class="about">
           <dt>Versie</dt><dd>Kiosk Player ${esc(info.version)}</dd>
+          <dt>Systeem</dt><dd>${win ? "Windows" : "Linux"}</dd>
           <dt>Gebruiker</dt><dd>${esc(info.user)}</dd>
           <dt>Gegevensmap</dt><dd>${esc(info.data_dir)}</dd>
           <dt>Mediamap</dt><dd>${esc(info.data_dir)}/media</dd>
@@ -1082,6 +1086,9 @@ function fmtStamp(iso) {
   return isNaN(d) ? iso : d.toLocaleString("nl-NL", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 const versionLabel = (v) => (v && (v.sha || v.branch) ? `<b>${esc(v.branch || "?")}</b> · <code>${esc(short(v.sha))}</code>` : "Onbekend");
+const logHint = (plain) => (S.all?.info?.platform === "windows"
+  ? (plain ? "kiosk-player\\logs\\stderr.log" : "<code>kiosk-player\\logs\\stderr.log</code>")
+  : (plain ? "journalctl -u kiosk-player" : "<code>journalctl -u kiosk-player</code>"));
 const updBusy = () => ["busy", "restarting"].includes(S.upd?.job?.status);
 
 async function loadUpdate() {
@@ -1126,7 +1133,7 @@ function renderUpdate() {
     ${v.installed_at ? `<dt>Sinds</dt><dd>${esc(fmtStamp(v.installed_at))}</dd>` : ""}
     <dt>Repository</dt><dd>${esc(u.repo)}</dd></dl>`];
   if (last.status === "rolled_back") h.push(banner("error", `De update naar <b>${esc(last.failed_branch)}</b> (${esc(short(last.failed_sha))}) startte niet. De vorige versie is automatisch teruggezet.`));
-  if (last.status === "failed_no_backup") h.push(banner("error", "De nieuwe versie start niet goed en er was geen vorige versie om terug te zetten. Bekijk op de kiosk <code>journalctl -u kiosk-player</code>."));
+  if (last.status === "failed_no_backup") h.push(banner("error", `De nieuwe versie start niet goed en er was geen vorige versie om terug te zetten. Bekijk op de kiosk ${logHint()}.`));
   if (job.status === "error") h.push(banner("error", `<b>Update mislukt.</b> ${esc(job.error)}`));
   if (busy) h.push(banner("", `<b>${esc(job.step || "Bezig")}…</b><br><span class="small">Na het installeren herstart Kiosk Player. Het scherm is dan ongeveer 10 seconden zwart.</span>`));
   if (u.problem) {
@@ -1206,7 +1213,7 @@ async function watchUpdate() {
       if (S.view === "instellingen") renderUpdate();
       if (!["busy", "restarting"].includes(u.job.status)) return;
     }
-    toast("De update duurt erg lang. Kijk op de kiosk met: journalctl -u kiosk-player", "error");
+    toast(`De update duurt erg lang. Kijk op de kiosk in ${logHint(true)}.`, "error");
   } finally { S.updWatch = false; }
 }
 

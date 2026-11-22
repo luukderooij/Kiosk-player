@@ -10,6 +10,7 @@ import os
 import re
 import secrets
 import shlex
+import socket
 import sys
 import threading
 import time
@@ -19,6 +20,7 @@ from datetime import date, datetime, timedelta
 from flask import Flask, abort, jsonify, redirect, request, send_file, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from . import system
 from .controller import Controller
 from .media import ALLOWED_EXT, MediaLibrary, kind_of
 from .player import Player
@@ -145,6 +147,12 @@ def _vlc_options(tokens: list, field: str) -> None:
 
 
 def validate_vlc_command(cmd: str) -> None:
+    if system.IS_WINDOWS:
+        prog = cmd.strip().strip('"')
+        if prog.lower() in system.WINDOWS_VLC_NAMES or system.windows_vlc_path_allowed(prog):
+            return
+        raise ApiError("VLC-commando moet vlc zijn, of het volledige pad naar vlc.exe in een "
+                       r"programmamap, zoals C:\Program Files\VideoLAN\VLC\vlc.exe")
     try:
         tokens = shlex.split(cmd)
     except ValueError:
@@ -374,7 +382,8 @@ def create_app(data_dir: str) -> Flask:
         return jsonify(queues=snap["queues"], rules=snap["rules"], settings=snap["settings"],
                        info={"version": VERSION, "data_dir": data_dir, "port": config["port"],
                              "max_upload_gb": config["max_upload_gb"],
-                             "ffmpeg": bool(media.ffmpeg), "user": getpass.getuser()})
+                             "ffmpeg": bool(media.ffmpeg), "user": getpass.getuser(),
+                             "platform": system.name(), "vlc": system.find_vlc()})
 
     @app.get("/api/events")
     def api_events():
@@ -686,7 +695,8 @@ def set_password(data_dir: str) -> None:
         if pw != getpass.getpass("Nogmaals: "):
             sys.exit("Wachtwoorden komen niet overeen.")
     else:
-        pw = sys.stdin.readline().rstrip("\n")
+        # utf-8-sig: Windows PowerShell zet een BOM voor gepipete tekst
+        pw = sys.stdin.buffer.readline().decode("utf-8-sig").rstrip("\r\n")
     if len(pw) < 8:
         sys.exit("Kies een wachtwoord van minstens 8 tekens.")
     config["password_hash"] = generate_password_hash(pw)
@@ -694,19 +704,51 @@ def set_password(data_dir: str) -> None:
     print("Wachtwoord opgeslagen.")
 
 
+def watch_supervisor(app: Flask) -> None:
+    """Onder run.py --supervise: stop VLC en onszelf als de supervisor verdwijnt (stdin sluit dan)."""
+    stdin = sys.stdin
+
+    def wait_for_eof():
+        try:
+            if stdin is not None:
+                stdin.buffer.read()
+        except (OSError, ValueError):
+            pass
+        log.info("Supervisor is gestopt; Kiosk Player stopt ook")
+        ext = app.extensions["kiosk"]
+        try:
+            with ext["controller"].tick_lock:
+                ext["player"].stop()
+        finally:
+            logging.shutdown()
+            os._exit(0)
+
+    if stdin is not None:
+        threading.Thread(target=wait_for_eof, name="supervisor-watch", daemon=True).start()
+
+
 def main() -> None:
     data_dir = data_dir_from_env()
     if len(sys.argv) > 1 and sys.argv[1] == "set-password":
         set_password(data_dir)
         return
-    if os.geteuid() == 0 and os.environ.get("KIOSK_ALLOW_ROOT") != "1":
+    if system.is_root() and os.environ.get("KIOSK_ALLOW_ROOT") != "1":
         sys.exit("Start Kiosk Player niet als root: VLC weigert als root te draaien. "
                  "Gebruik de kioskgebruiker (zie README).")
+    os.makedirs(data_dir, exist_ok=True)
+    pre = Config(data_dir)
+    host, port = pre["host"], int(pre["port"])
+    # Vóór de planner start: een tweede exemplaar zou anders VLC van het eerste sluiten.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((host, port))
+    except OSError:
+        sys.exit(f"Poort {port} is al in gebruik. Draait Kiosk Player al?")
     setup_logging(data_dir)
     app = create_app(data_dir)
-    config = app.extensions["kiosk"]["config"]
-    host, port = config["host"], int(config["port"])
-    log.info("Webinterface op http://%s:%s (data: %s)", host, port, data_dir)
+    if os.environ.get("KIOSK_SUPERVISED") == "1":
+        watch_supervisor(app)
+    log.info("Webinterface op http://%s:%s (data: %s, %s)", host, port, data_dir, system.name())
     try:
         from waitress import serve
     except ImportError:

@@ -1,6 +1,6 @@
 # Kiosk Player
 
-Een webinterface om het scherm in het pand te beheren. Hij draait op de Ubuntu 24.04-kiosk zelf en start VLC voor je.
+Een webinterface om het scherm in het pand te beheren. Hij draait op de kiosk zelf en start VLC voor je. De kiosk kan een Ubuntu 24.04-pc zijn of een Windows 10/11-pc.
 Je hebt er geen ssh-commando's meer voor nodig.
 
 - **Media**: video's en afbeeldingen uploaden vanuit de browser, met voorbeeldplaatjes en de duur.
@@ -11,7 +11,7 @@ Je hebt er geen ssh-commando's meer voor nodig.
 
 ---
 
-## Installeren
+## Installeren op Ubuntu
 
 Kopieer de map naar de kiosk en voer het installatiescript uit:
 
@@ -51,9 +51,38 @@ Start een nieuwe versie niet goed op, dan zet Kiosk Player na drie pogingen vanz
 
 > Werkt de knop niet en staat er dat de programmamap niet schrijfbaar is? Dan is Kiosk Player geïnstalleerd met een oudere versie van het script. Voer eenmalig `sudo ./install.sh protectiepartners` uit met deze versie, daarna werkt bijwerken via de website.
 
+Dit werkt op Ubuntu en op Windows hetzelfde.
+
 ### Bijwerken met het installatiescript
 
-Pak de nieuwe versie uit en voer `sudo ./install.sh protectiepartners` opnieuw uit. Je media, wachtrijen, planning en wachtwoord blijven bewaard. Dit is nodig als een nieuwe versie andere Ubuntu-pakketten nodig heeft of als `run.py`, het installatiescript of de systemd-dienst is veranderd. De website werkt alleen de map `app/` bij.
+Pak de nieuwe versie uit en voer `sudo ./install.sh protectiepartners` opnieuw uit. Op Windows is dat `install.ps1`. Je media, wachtrijen, planning en wachtwoord blijven bewaard. Dit is nodig als een nieuwe versie andere pakketten nodig heeft, of als `run.py`, het installatiescript of de dienst is veranderd. De website werkt alleen de map `app/` bij.
+
+---
+
+## Installeren op Windows
+
+Kiosk Player werkt op Windows 10 en 11. Log op de kiosk-pc in als de gebruiker die het scherm toont. Kopieer de map naar die pc, pak hem uit, en open in die map een gewoon PowerShell-venster, dus **niet** als administrator:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Het script doet het volgende:
+
+1. Het installeert Python 3.12, VLC en ffmpeg met winget als ze er nog niet zijn. Voor VLC vraagt Windows om toestemming.
+2. Het kopieert het programma naar `%LOCALAPPDATA%\KioskPlayer`, met een eigen Python-omgeving met Flask en waitress.
+3. Het maakt de gegevensmap `%USERPROFILE%\kiosk-player` voor media, wachtrijen en planning.
+4. Het vraagt welk wachtwoord je voor de webinterface wilt gebruiken.
+5. Het biedt aan de video's en afbeeldingen uit je map Documenten over te nemen. De originelen blijven staan.
+6. Het maakt de geplande taak **Kiosk Player**, die start zodra deze gebruiker inlogt. Lukt dat niet, dan komt er een snelkoppeling in de map Opstarten.
+7. Het zet poort 8080 open in de firewall, alleen voor het eigen netwerk (profiel *Privé* of *Domein*). Daarvoor vraagt Windows om toestemming.
+8. Het vraagt of het scherm en de slaapstand nooit automatisch uit moeten gaan. Voor een kiosk is dat aan te raden.
+
+Daarna open je in de browser **http://ip-adres-van-de-pc:8080**. Een andere poort kies je zo: `powershell -ExecutionPolicy Bypass -File .\install.ps1 -Port 8090`
+
+Nog twee instellingen in Windows:
+- **Automatisch inloggen.** VLC heeft een bureaublad nodig, dus de kioskgebruiker moet na het opstarten ingelogd zijn. Zet automatisch inloggen aan via `netplwiz`, of via Instellingen → Accounts → Aanmeldingsopties.
+- **Netwerkprofiel.** Staat het netwerk op *Openbaar*, dan blokkeert de firewall de webinterface. Zet het op *Privé* via Instellingen → Netwerk en internet.
 
 ---
 
@@ -88,6 +117,8 @@ Op de pagina **Nu** kun je een wachtrij starten of op **Stop** drukken. Die keuz
 
 ## Beheer op de kiosk
 
+### Ubuntu
+
 | Wat | Commando |
 |---|---|
 | Status van de dienst | `systemctl status kiosk-player` |
@@ -97,14 +128,30 @@ Op de pagina **Nu** kun je een wachtrij starten of op **Stop** drukken. Die keuz
 | Wachtwoord vergeten | `sudo -u protectiepartners env KIOSK_DATA_DIR=/home/protectiepartners/kiosk-player python3 /opt/kiosk-player/run.py set-password` en daarna `sudo systemctl restart kiosk-player` |
 | Verwijderen (media blijft) | `sudo ./uninstall.sh` |
 
-Alle gegevens staan in `~/kiosk-player`:
+### Windows
+
+Voer deze commando's uit in PowerShell, als de kioskgebruiker.
+
+| Wat | Commando |
+|---|---|
+| Status | `Get-ScheduledTask -TaskName 'Kiosk Player'` |
+| Logboek bekijken | `Get-Content $env:USERPROFILE\kiosk-player\logs\kiosk-player.log -Wait -Tail 30` |
+| Fouten bij het opstarten | `Get-Content $env:USERPROFILE\kiosk-player\logs\stderr.log -Tail 30` |
+| Herstarten | `Stop-ScheduledTask 'Kiosk Player'; Start-ScheduledTask 'Kiosk Player'` |
+| Stoppen (VLC stopt ook) | `Stop-ScheduledTask 'Kiosk Player'` |
+| Wachtwoord vergeten | `& "$env:LOCALAPPDATA\KioskPlayer\.venv\Scripts\python.exe" "$env:LOCALAPPDATA\KioskPlayer\run.py" set-password` en daarna herstarten |
+| Verwijderen (media blijft) | `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` |
+
+### Gegevens
+
+Alle gegevens staan in `~/kiosk-player`, op Windows `%USERPROFILE%\kiosk-player`:
 
 ```
 ~/kiosk-player/
   media/          je video's en afbeeldingen
   data.json       wachtrijen, planning en instellingen
   config.json     poort, wachtwoord-hash en de GitHub-repository voor updates
-  logs/           kiosk-player.log en vlc.log (laatste VLC-uitvoer)
+  logs/           kiosk-player.log en vlc.log (laatste VLC-uitvoer); op Windows ook stderr.log
 ```
 
 Maak je een **back-up**, kopieer dan die hele map. Wil je de poort wijzigen, pas dan `port` aan in `config.json` en herstart de dienst.
@@ -115,17 +162,19 @@ Maak je een **back-up**, kopieer dan die hele map. Wil je de poort wijzigen, pas
 
 **De webinterface is niet bereikbaar.**
 Controleer met `systemctl status kiosk-player` of de dienst draait. Controleer ook of de firewall de poort doorlaat met `sudo ufw status`.
+Op Windows kijk je in `kiosk-player\logs\stderr.log`. Controleer ook of het netwerk op *Privé* staat en of de firewallregel *Kiosk Player* bestaat.
 
 **Op de pagina Nu staat dat VLC onverwacht stopte.**
 Open *Technische details* onderaan de pagina. Daar staan het precieze VLC-commando en de laatste uitvoer van VLC. Dit zijn de meest voorkomende oorzaken:
 - *Niemand is ingelogd op het scherm.* VLC heeft een bureaublad nodig. Zet automatisch inloggen aan voor `protectiepartners` via Instellingen → Gebruikers. Direct na het opstarten probeert Kiosk Player het vanzelf opnieuw, met een steeds langere pauze tot maximaal een minuut.
-- *Het display is anders dan `:0`.* Pas het aan onder **Instellingen**. Het is dezelfde waarde als `DISPLAY=:0` in je ssh-commando.
+- *Het display is anders dan `:0`* (alleen Ubuntu). Pas het aan onder **Instellingen**. Het is dezelfde waarde als `DISPLAY=:0` in je ssh-commando.
+- *VLC is niet gevonden* (Windows). Onder **Instellingen** staat bij VLC-commando welke vlc.exe Kiosk Player gebruikt. Staat er dat VLC niet gevonden is, installeer VLC dan opnieuw of vul het volledige pad naar vlc.exe in.
 
 **Er is geen geluid.**
 Kiosk Player start VLC in de sessie van de gebruiker die is ingelogd. Daardoor gaat het geluid naar de normale geluidsuitgang. Controleer ook of de wachtrij niet op *Geluid uit* staat.
 
 **Het scherm valt na een tijdje uit.**
-Zet in Ubuntu bij Instellingen → Energie de optie *Scherm leegmaken* op *Nooit*.
+Zet in Ubuntu bij Instellingen → Energie de optie *Scherm leegmaken* op *Nooit*. Op Windows stel je bij Instellingen → Systeem → Energie het scherm en de slaapstand in op *Nooit*. Dat biedt het installatiescript ook aan.
 
 **Een video speelt niet af in de voorvertoning.**
 Sommige formaten, zoals mkv, spelen niet in elke browser. VLC op de kiosk speelt ze wel af.
@@ -137,17 +186,18 @@ Sommige formaten, zoals mkv, spelen niet in elke browser. VLC op de kiosk speelt
 - De webinterface gebruikt gewoon http, beveiligd met een wachtwoord. Gebruik hem alleen binnen het eigen netwerk en zet de poort niet open naar internet. Wil je van buitenaf beheren, gebruik dan een VPN.
 - Na 5 verkeerde pogingen moet je een minuut wachten voordat je weer kunt inloggen.
 - Wijzig je het wachtwoord, dan worden alle andere browsers uitgelogd.
-- Onder **Instellingen** kun je als VLC-commando alleen `vlc` of `cvlc` invullen, en als extra opties alleen VLC-opties die met `--` beginnen. Opties die andere programma's laden of bestanden wegschrijven worden geweigerd.
+- Onder **Instellingen** kun je als VLC-commando alleen `vlc` of `cvlc` invullen, op Windows ook het pad naar vlc.exe in een programmamap. Als extra opties zijn alleen VLC-opties toegestaan die met `--` beginnen. Opties die andere programma's laden of bestanden wegschrijven worden geweigerd.
 - VLC wordt alleen op de kiosk zelf bediend, via een interne poort met een wachtwoord dat elke keer anders is.
-- Kiosk Player weigert als root te draaien. Hij draait altijd als de kioskgebruiker.
+- Kiosk Player weigert als root te draaien. Hij draait altijd als de kioskgebruiker. Op Windows draait hij zonder administratorrechten.
 - Updates via de website komen alleen uit de ingestelde GitHub-repository (`update_repo` in `config.json`). Iedereen met het wachtwoord van de webinterface kan dus elke branch uit die repository installeren. Geef alleen mensen schrijfrechten op de repository die je dat toevertrouwt.
 
 ---
 
 ## Techniek
 
-- Het programma is geschreven in Python 3 met Flask en waitress, de standaardpakketten van Ubuntu 24.04. Er is geen pip of virtualenv nodig.
-- VLC wordt gestart als `cvlc --fullscreen --loop …` met `--extraintf=http`, zodat vorige, volgende en pauze werken en de pagina Nu ziet wat er speelt. De weergavetijd per afbeelding wordt per bestand meegegeven met `:image-duration=N`.
+- Het programma is geschreven in Python 3 met Flask en waitress. Op Ubuntu zijn dat de standaardpakketten van Ubuntu 24.04, zonder pip of virtualenv. Op Windows staan ze in een eigen Python-omgeving.
+- Op Ubuntu start systemd Kiosk Player en herstart hem als dat nodig is. Op Windows doet de geplande taak dat met `run.py --supervise`.
+- VLC wordt gestart als `cvlc --fullscreen --loop …`, op Windows als `vlc.exe --intf=dummy --fullscreen …`. Daarbij komt `--extraintf=http`, zodat vorige, volgende en pauze werken en de pagina Nu ziet wat er speelt. De weergavetijd per afbeelding wordt per bestand meegegeven met `:image-duration=N`.
 - Elke 5 seconden bepaalt de planner wat er hoort te spelen. Is dat iets anders dan wat VLC speelt, dan start hij VLC opnieuw met de juiste lijst. Een wissel in de planning kan dus tot 5 seconden later op het scherm komen.
 - Wijzig je een wachtrij die op dat moment speelt, dan start VLC direct opnieuw met de nieuwe inhoud.
-- De tests voer je uit met `python3 -m pytest tests/`. Op Ubuntu heb je daarvoor `python3-pytest` nodig. GitHub voert ze bij elke push automatisch uit.
+- De tests voer je uit met `python3 -m pytest tests/`. Op Ubuntu heb je daarvoor `python3-pytest` nodig. GitHub voert ze bij elke push automatisch uit, op Ubuntu en op Windows.

@@ -41,7 +41,14 @@ def atomic_write_json(path: str, data) -> None:
             json.dump(data, f, indent=2, ensure_ascii=False, default=str)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:  # Windows: bestand even vastgehouden door virusscanner/OneDrive
+                if os.name != "nt" or attempt == 9:
+                    raise
+                time.sleep(0.1)
     except BaseException:
         try:
             os.unlink(tmp)
